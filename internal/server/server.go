@@ -62,6 +62,7 @@ type Server struct {
 	tracker  atomic.Pointer[tracker.Client]
 
 	limiter *loginLimiter
+	live    *hub
 	handler http.Handler
 }
 
@@ -69,7 +70,7 @@ func New(cfg Config, st *store.Store, logger *slog.Logger) (*Server, error) {
 	if cfg.SessionTTL == 0 {
 		cfg.SessionTTL = 30 * 24 * time.Hour
 	}
-	s := &Server{cfg: cfg, store: st, log: logger, limiter: newLoginLimiter(10, 15*time.Minute)}
+	s := &Server{cfg: cfg, store: st, log: logger, limiter: newLoginLimiter(10, 15*time.Minute), live: newHub()}
 	if cfg.Dev {
 		s.webFS = os.DirFS("web")
 	} else {
@@ -256,8 +257,16 @@ func (s *Server) render(w http.ResponseWriter, r *http.Request, status int, page
 	data["AssetVersion"] = s.assetVersion
 	data["Path"] = r.URL.Path
 	data["URI"] = r.URL.RequestURI()
-	if f := s.popFlash(w, r); f != nil {
-		data["Flash"] = f
+	// A live page refreshing itself leaves any flash for the next real visit.
+	if r.Header.Get("X-Live-Refresh") == "" {
+		if f := s.popFlash(w, r); f != nil {
+			data["Flash"] = f
+		}
+	}
+	// A form sent back with errors isn't live: a refresh would wipe what
+	// was typed before anyone touches the form again.
+	if r.Method != http.MethodGet {
+		delete(data, "Live")
 	}
 	if _, ok := data["Title"]; !ok {
 		data["Title"] = ""

@@ -177,6 +177,14 @@ main.container { flex: 1; padding-top: 20px; padding-bottom: 40px; }
   border-bottom: 1px solid var(--border);
 }
 
+/* Shown on a live page when changes arrive while a form there is half filled in. */
+.live-notice {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  padding: 10px 14px; border-radius: var(--radius-sm); margin-bottom: 18px;
+  background: var(--surface-2); color: var(--text); font-weight: 500;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, .12);
+}
+
 .footer { color: var(--muted); font-size: .85rem; padding-top: 16px; padding-bottom: calc(24px + env(safe-area-inset-bottom)); border-top: 1px solid var(--border); }
 
 /* ---------- Buttons ---------- */
@@ -500,7 +508,7 @@ select:disabled { opacity: .6; }
 .section > .two-col, .chart-wrap + .legend + .two-col, .chart-wrap + .two-col { margin-top: 20px; }
 
 @media print {
-  .topbar, .footer, .btn, .no-print, .flash, .offline-banner, .tabs, .crumbs, .prod-head, .page-head__actions { display: none !important; }
+  .topbar, .footer, .btn, .no-print, .flash, .offline-banner, .live-notice, .tabs, .crumbs, .prod-head, .page-head__actions { display: none !important; }
   .print-only { display: block; }
   .print-only h1 { font-size: 1.3rem; }
   body { background: #fff; color: #000; font-size: 11pt; }

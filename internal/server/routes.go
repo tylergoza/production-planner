@@ -38,6 +38,7 @@ func (s *Server) routes() http.Handler {
 	auth := func(pattern string, h http.HandlerFunc) { mux.Handle(pattern, s.requireUser(h)) }
 
 	auth("GET /{$}", s.handleDashboard)
+	auth("GET /live", s.handleEvents)
 
 	auth("GET /productions", s.handleProductions)
 	auth("GET /productions/new", s.handleProductionNew)
@@ -111,7 +112,7 @@ func (s *Server) routes() http.Handler {
 
 	mux.HandleFunc("/", s.notFound)
 
-	return s.logRequests(s.securityHeaders(s.loadSession(s.csrf(mux))))
+	return s.logRequests(s.securityHeaders(s.loadSession(s.csrf(s.announceChanges(mux)))))
 }
 
 // Middleware -------------------------------------------------------------
@@ -143,6 +144,9 @@ func (r *statusRecorder) WriteHeader(code int) {
 	r.status = code
 	r.ResponseWriter.WriteHeader(code)
 }
+
+// Unwrap lets http.ResponseController reach Flush and write deadlines.
+func (r *statusRecorder) Unwrap() http.ResponseWriter { return r.ResponseWriter }
 
 func (s *Server) securityHeaders(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

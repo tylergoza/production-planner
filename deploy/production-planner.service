@@ -1,0 +1,31 @@
+# systemd unit for running the binary directly (no Docker). Install:
+#   sudo useradd --system --home-dir /var/lib/production-planner --shell /usr/sbin/nologin planner
+#   sudo install -m 755 production-planner-linux-amd64 /usr/local/bin/production-planner
+#   sudo cp production-planner.service /etc/systemd/system/
+#   sudo systemctl daemon-reload && sudo systemctl enable --now production-planner
+# Edit TZ below first. Run commands as the service user against the same
+# database, flags before the command:
+#   sudo -u planner production-planner -db /var/lib/production-planner/productions.db create-user alice --admin
+# Logs: journalctl -u production-planner -f
+[Unit]
+Description=Church Production Planner
+After=network.target
+
+[Service]
+User=planner
+StateDirectory=production-planner
+Environment=ADDR=127.0.0.1:8090
+Environment=DB_PATH=/var/lib/production-planner/productions.db
+Environment=TZ=America/Chicago
+# Caddy (deploy/Caddyfile) is in front; it's the only thing that can reach
+# 127.0.0.1:8090, so its X-Forwarded-* headers can be trusted.
+Environment=TRUST_PROXY=1
+ExecStart=/usr/local/bin/production-planner
+Restart=on-failure
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

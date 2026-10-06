@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <rect width="512" height="512" rx="112" fill="#5b2a6e"/>
+  <!-- valance -->
+  <rect x="76" y="92" width="360" height="44" rx="10" fill="#f4c34d"/>
+  <!-- curtains -->
+  <path d="M84 136 H204 C194 232 162 332 118 416 H84 Z" fill="#fff"/>
+  <path d="M428 136 H308 C318 232 350 332 394 416 H428 Z" fill="#fff"/>
+  <!-- star -->
+  <path d="M256 206 l24 50 54 7 -40 37 11 54 -49 -27 -49 27 11 -54 -40 -37 54 -7 z" fill="#f4c34d"/>
+  <!-- stage -->
+  <rect x="68" y="414" width="376" height="26" rx="8" fill="#fff"/>
+</svg>

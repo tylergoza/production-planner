@@ -1,0 +1,11 @@
+{{define "content"}}
+<div class="card narrow">
+  <h2 class="section__title">Edit {{.Form.Name}}</h2>
+  {{with .Form.UpdatedBy}}<p class="muted small">Last changed by {{.}}, {{fmtTime $.Form.UpdatedAt}}.</p>{{end}}
+  {{template "errors" .Errors}}
+  {{template "prep-fields" (dict "Form" .Form "Departments" .Departments "Statuses" .Statuses "Scenes" .Scenes "Action" (printf "/prep/%d" .Form.ID) "CSRF" .CSRF "Cancel" (printf "/productions/%d/prep" .P.ID))}}
+</div>
+<div class="card narrow">
+  {{template "delete-button" (dict "Action" (printf "/prep/%d/delete" .Form.ID) "CSRF" .CSRF "Label" "Remove" "Confirm" (printf "Remove %s?" .Form.Name))}}
+</div>
+{{end}}

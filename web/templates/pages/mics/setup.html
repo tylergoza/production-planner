@@ -1,0 +1,70 @@
+{{define "content"}}
+{{$p := .P}}
+<nav class="crumbs"><a href="/productions/{{$p.ID}}/mics">Mic chart</a> › Mics</nav>
+<div class="two-col two-col--wide-left">
+  <section>
+    <h2 class="section__title">Mics <span class="count">{{len .Mics}}</span></h2>
+    {{if .Mics}}
+    <div class="table-wrap">
+      <table class="table table--stack">
+        <thead><tr><th>Ch</th><th>Mic</th><th>Kind</th><th><span class="sr-only">Actions</span></th></tr></thead>
+        <tbody>
+          {{range .Mics}}
+            <tr>
+              <td data-label="Channel"><strong>{{.Channel}}</strong></td>
+              <td data-label="Mic"><div>{{.Name}}{{if .TrackerItemID}} <span class="chip" title="Unit {{.TrackerUnit}} in the maintenance tracker">tracker</span>{{end}}{{with .Notes}}<br><span class="muted small">{{.}}</span>{{end}}</div></td>
+              <td data-label="Kind">{{micKindLabel .Kind}}</td>
+              <td class="actions">
+                {{template "move-buttons" (dict "Action" (printf "/mics/%d/move" .ID) "CSRF" $.CSRF "Next" (printf "/productions/%d/mics/setup" $p.ID))}}
+                <a class="btn btn--ghost btn--sm" href="/mics/{{.ID}}/edit">Edit</a>
+              </td>
+            </tr>
+          {{end}}
+        </tbody>
+      </table>
+    </div>
+    <p class="muted small">The chart lists mics in this order. Set each one's console channel so the chart matches the board.</p>
+    {{else}}
+      <div class="empty empty--inline"><p>No mics yet. Bring them in from the maintenance tracker, or add them by hand.</p></div>
+    {{end}}
+  </section>
+
+  <div>
+    <section class="card">
+      <h2 class="section__title">From the maintenance tracker</h2>
+      {{if .TrackerOn}}
+        <form method="get" action="/productions/{{$p.ID}}/mics/setup" class="inline-fields">
+          <div class="field"><label for="q" class="sr-only">Search products</label><input id="q" type="search" name="q" value="{{.Q}}" placeholder="Search products"></div>
+          <button type="submit" class="btn btn--sm">Search</button>
+        </form>
+        {{with .TrackerError}}<div class="alert alert--error">{{.}}</div>{{end}}
+        {{if .TrackerProducts}}
+          <ul class="pick-list">
+            {{range .TrackerProducts}}
+              <li>
+                <div><strong>{{.Name}}</strong><br><span class="muted small">{{.Total}} in all{{with .Category}} · {{.}}{{end}}</span></div>
+                <form method="post" action="/productions/{{$p.ID}}/mics/import" class="inline-form">
+                  {{template "csrf" $.CSRF}}
+                  <input type="hidden" name="product_id" value="{{.ID}}">
+                  <button type="submit" class="btn btn--sm">Add all {{.Total}}</button>
+                </form>
+              </li>
+            {{end}}
+          </ul>
+          <p class="muted small">Adds one mic per unit, named by the ID on its sticker. Ones already here are skipped.</p>
+        {{else if not .TrackerError}}
+          <p class="muted small">No products match "{{.Q}}".</p>
+        {{end}}
+      {{else}}
+        <p class="muted small">Connect the maintenance tracker in Settings to bring in mics by the ID on their stickers.</p>
+      {{end}}
+    </section>
+
+    <section class="card">
+      <h2 class="section__title">Add by hand</h2>
+      {{template "errors" .Errors}}
+      {{template "mic-fields" (dict "Form" .Form "Kinds" .Kinds "Action" (printf "/productions/%d/mics" $p.ID) "CSRF" .CSRF)}}
+    </section>
+  </div>
+</div>
+{{end}}

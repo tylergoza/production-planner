@@ -1,0 +1,60 @@
+{{define "content"}}
+<nav class="crumbs" aria-label="Breadcrumb"><a href="/productions">Productions</a>{{if .Form.ID}} › <a href="/productions/{{.Form.ID}}">{{.Form.Title}}</a>{{end}}</nav>
+<div class="page-head"><div><h1>{{.Title}}</h1></div></div>
+<div class="card narrow">
+  {{template "errors" .Errors}}
+  <form method="post" action="{{if .Form.ID}}/productions/{{.Form.ID}}{{else}}/productions{{end}}" class="form">
+    {{template "csrf" .CSRF}}
+    <div class="field">
+      <label for="title">Title</label>
+      <input id="title" name="title" value="{{.Form.Title}}" required maxlength="200" {{if not .Form.ID}}autofocus{{end}}>
+    </div>
+    <div class="field-row">
+      <div class="field">
+        <label for="kind">Kind <span class="optional">optional</span></label>
+        <input id="kind" name="kind" value="{{.Form.Kind}}" placeholder="e.g. Christmas musical" list="production-kinds">
+        <datalist id="production-kinds">
+          <option value="Christmas musical"><option value="Easter drama"><option value="Children's program">
+          <option value="Concert"><option value="VBS program"><option value="Play">
+        </datalist>
+      </div>
+      <div class="field">
+        <label for="status">Status</label>
+        <select id="status" name="status">
+          {{range .Statuses}}<option value="{{.}}" {{if eq . $.Form.Status}}selected{{end}}>{{productionStatusLabel .}}</option>{{end}}
+        </select>
+      </div>
+    </div>
+    <div class="field-row">
+      <div class="field">
+        <label for="venue">Where <span class="optional">optional</span></label>
+        <input id="venue" name="venue" value="{{.Form.Venue}}" placeholder="e.g. Sanctuary">
+      </div>
+      <div class="field">
+        <label for="director">Director <span class="optional">optional</span></label>
+        <input id="director" name="director" value="{{.Form.Director}}">
+      </div>
+    </div>
+    <div class="field">
+      <label for="description">About it <span class="optional">optional</span></label>
+      <textarea id="description" name="description" rows="3">{{.Form.Description}}</textarea>
+    </div>
+    <div class="field">
+      <label for="notes">Notes <span class="optional">optional</span></label>
+      <textarea id="notes" name="notes" rows="4">{{.Form.Notes}}</textarea>
+      <p class="hint">Anything the team should know: call times, parking, who has the keys.</p>
+    </div>
+    <div class="form__actions">
+      <button type="submit" class="btn btn--primary">{{if .Form.ID}}Save{{else}}Add production{{end}}</button>
+      <a class="btn btn--ghost" href="{{if .Form.ID}}/productions/{{.Form.ID}}{{else}}/productions{{end}}">Cancel</a>
+    </div>
+  </form>
+</div>
+{{if .Form.ID}}
+<div class="card narrow danger-zone">
+  <h2 class="section__title">Delete this production</h2>
+  <p class="muted small">Deletes its dates, cast, scenes, mic chart and every final version of it, readiness and needs. Nothing in the maintenance tracker is touched. To keep it on record instead, set its status to Done.</p>
+  {{template "delete-button" (dict "Action" (printf "/productions/%d/delete" .Form.ID) "CSRF" .CSRF "Label" "Delete production" "Confirm" (printf "Delete %s and everything in it? This can't be undone." .Form.Title))}}
+</div>
+{{end}}
+{{end}}

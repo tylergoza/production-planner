@@ -1,0 +1,11 @@
+{{define "content"}}
+<div class="card narrow">
+  <h2 class="section__title">Edit {{.Form.Label}}</h2>
+  {{template "errors" .Errors}}
+  {{template "cast-fields" (dict "Form" .Form "Action" (printf "/cast/%d" .Form.ID) "CSRF" .CSRF "Cancel" (printf "/productions/%d/cast#cast" .P.ID))}}
+</div>
+<div class="card narrow">
+  <p class="muted small">Removing them also takes them off every mic in the chart.</p>
+  {{template "delete-button" (dict "Action" (printf "/cast/%d/delete" .Form.ID) "CSRF" .CSRF "Label" "Remove from cast" "Confirm" (printf "Remove %s from the cast and the mic chart?" .Form.Label))}}
+</div>
+{{end}}

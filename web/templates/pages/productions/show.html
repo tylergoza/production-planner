@@ -1,0 +1,95 @@
+{{define "content"}}
+{{$p := .P}}{{$sum := .Sum}}
+<div class="stat-grid">
+  <a class="stat" href="/productions/{{$p.ID}}/schedule">
+    <span class="stat__label">Next up</span>
+    {{with $sum.NextEvent}}
+      <span class="stat__value">{{relDays .Date}}</span>
+      <span class="stat__sub">{{.Title}} · {{.When}}</span>
+    {{else}}
+      <span class="stat__value">—</span><span class="stat__sub">{{if $sum.LastDate}}All dates are past{{else}}Add dates on the Schedule tab{{end}}</span>
+    {{end}}
+  </a>
+  <a class="stat" href="/productions/{{$p.ID}}/prep">
+    <span class="stat__label">Ready</span>
+    <span class="stat__value">{{$sum.Prep.Done}} <small>of {{$sum.Prep.Total}}</small></span>
+    {{template "progress" $sum.Prep}}
+  </a>
+  <a class="stat" href="/productions/{{$p.ID}}/mics">
+    <span class="stat__label">Mic chart</span>
+    <span class="stat__value">{{template "chart-badge" .Chart}}</span>
+    <span class="stat__sub">{{pluralize $sum.Mics "mic"}} · {{pluralize $sum.Scenes "scene"}} · {{$sum.Cast}} in the cast</span>
+  </a>
+  <a class="stat" href="/productions/{{$p.ID}}/needs">
+    <span class="stat__label">Needs gathered</span>
+    <span class="stat__value">{{$sum.Needs.Done}} <small>of {{$sum.Needs.Total}}</small></span>
+    {{template "progress" $sum.Needs}}
+  </a>
+</div>
+
+<div class="two-col section">
+  <div>
+    {{if .Attention}}
+    <section class="card card--alert">
+      <h2 class="section__title">Needs attention</h2>
+      <ul class="plain-list">
+        {{range .Attention}}
+          <li>{{template "prep-badge" .Status}} <a href="/productions/{{$p.ID}}/prep#prep-{{.ID}}">{{.Name}}</a>
+            <span class="muted small">· {{deptLabel .Department}}{{with .Owner}} · {{.}}{{end}}{{if and .DueOn (overdue .DueOn)}} · was due {{fmtDate .DueOn}}{{end}}</span></li>
+        {{end}}
+      </ul>
+    </section>
+    {{end}}
+
+    <section class="card">
+      <h2 class="section__title">Readiness by department</h2>
+      {{if .Departments}}
+        <ul class="dept-list">
+          {{range .Departments}}
+            <li>
+              <a href="/productions/{{$p.ID}}/prep#dept-{{.Department}}">{{deptLabel .Department}}</a>
+              <span class="muted small">{{.Tally.Done}}/{{.Tally.Total}}{{if .Blocked}} · <span class="text-alert">{{.Blocked}} need help</span>{{end}}</span>
+              {{template "progress" .Tally}}
+            </li>
+          {{end}}
+        </ul>
+      {{else}}
+        <p class="muted">Nothing to track yet. Add props, costumes, music and the rest on the <a href="/productions/{{$p.ID}}/prep">Readiness</a> tab.</p>
+      {{end}}
+    </section>
+
+    {{if .StillNeeded}}
+    <section class="card">
+      <h2 class="section__title">Still needed</h2>
+      <ul class="plain-list">
+        {{range .StillNeeded}}<li>{{.Quantity}} × {{.Name}}{{if .FromTracker}} <span class="muted small">(from the maintenance tracker)</span>{{end}}</li>{{end}}
+      </ul>
+      <p><a href="/productions/{{$p.ID}}/needs">All needs</a></p>
+    </section>
+    {{end}}
+  </div>
+
+  <div>
+    <section class="card">
+      <h2 class="section__title">Coming up</h2>
+      {{if .Upcoming}}
+        <ul class="event-list">
+          {{range .Upcoming}}
+            <li><span class="badge badge--event-{{.Kind}}">{{.Title}}</span> {{.When}} <span class="muted small">({{relDays .Date}})</span></li>
+          {{end}}
+        </ul>
+      {{else}}
+        <p class="muted">No dates ahead.</p>
+      {{end}}
+      <p><a href="/productions/{{$p.ID}}/schedule">Full schedule</a></p>
+    </section>
+
+    {{if or $p.Description $p.Notes}}
+    <section class="card notes">
+      {{with $p.Description}}<h2 class="section__title">About</h2>{{range lines .}}<p>{{.}}</p>{{end}}{{end}}
+      {{with $p.Notes}}<h2 class="section__title">Notes</h2>{{range lines .}}<p>{{.}}</p>{{end}}{{end}}
+    </section>
+    {{end}}
+  </div>
+</div>
+{{end}}

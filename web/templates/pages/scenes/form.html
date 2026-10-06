@@ -1,0 +1,11 @@
+{{define "content"}}
+<div class="card narrow">
+  <h2 class="section__title">Edit scene {{.Form.FullLabel}}</h2>
+  {{template "errors" .Errors}}
+  {{template "scene-fields" (dict "Form" .Form "Action" (printf "/scenes/%d" .Form.ID) "CSRF" .CSRF "Cancel" (printf "/productions/%d/cast#scenes" .P.ID))}}
+</div>
+<div class="card narrow">
+  <p class="muted small">Removing a scene also removes its column from the mic chart. Readiness items for it are kept.</p>
+  {{template "delete-button" (dict "Action" (printf "/scenes/%d/delete" .Form.ID) "CSRF" .CSRF "Label" "Remove scene" "Confirm" (printf "Remove scene %s?" .Form.FullLabel))}}
+</div>
+{{end}}

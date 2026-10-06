@@ -1,0 +1,13 @@
+{{define "content"}}
+<nav class="crumbs"><a href="/productions/{{.P.ID}}/mics/setup">Mics</a></nav>
+<div class="card narrow">
+  <h2 class="section__title">Edit {{.Form.Label}}</h2>
+  {{if .Form.TrackerItemID}}<p class="muted small">Unit {{.Form.TrackerUnit}} in the maintenance tracker{{with .TrackerLink}} · <a href="{{.}}" target="_blank" rel="noopener">open it there</a>{{end}}.</p>{{end}}
+  {{template "errors" .Errors}}
+  {{template "mic-fields" (dict "Form" .Form "Kinds" .Kinds "Action" (printf "/mics/%d" .Form.ID) "CSRF" .CSRF "Cancel" (printf "/productions/%d/mics/setup" .P.ID))}}
+</div>
+<div class="card narrow">
+  <p class="muted small">Removing a mic also removes its row from the chart.</p>
+  {{template "delete-button" (dict "Action" (printf "/mics/%d/delete" .Form.ID) "CSRF" .CSRF "Label" "Remove mic" "Confirm" (printf "Remove %s and its row in the chart?" .Form.Label))}}
+</div>
+{{end}}

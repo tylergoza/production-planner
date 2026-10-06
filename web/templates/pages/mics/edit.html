@@ -1,0 +1,44 @@
+{{define "content"}}
+{{$p := .P}}
+<form method="post" action="/productions/{{$p.ID}}/mics/chart" class="chart-edit" data-controller="chart-fill">
+  {{template "csrf" .CSRF}}
+  <div class="section__head">
+    <label class="check small">
+      <input type="checkbox" data-chart-fill-target="carry" checked>
+      Carry changes forward: picking someone fills the following scenes that had the same person, up to the next change
+    </label>
+    <div class="page-head__actions">
+      <button type="submit" class="btn btn--primary btn--sm">Save chart</button>
+      <a class="btn btn--ghost btn--sm" href="/productions/{{$p.ID}}/mics">Cancel</a>
+    </div>
+  </div>
+  <div class="chart-wrap">
+    <table class="chart chart--edit">
+      <thead>
+        <tr>
+          <th scope="col" class="chart__corner">Mic</th>
+          {{range .Grid.Scenes}}<th scope="col" class="chart__scene"><span>{{.Label}}</span>{{with .Sub}}<small>{{.}}</small>{{end}}</th>{{end}}
+        </tr>
+      </thead>
+      <tbody>
+        {{range .Grid.Rows}}
+          {{$mic := .Mic}}
+          <tr data-chart-fill-target="row">
+            <th scope="row" class="chart__mic">{{.Mic.Label}}</th>
+            {{range .Cells}}
+              {{$cur := .Holder.CastID}}
+              <td>
+                <select name="c_{{$mic.ID}}_{{.SceneID}}" aria-label="{{$mic.Label}}, scene" data-action="focus->chart-fill#remember change->chart-fill#fill">
+                  <option value="">—</option>
+                  {{range $.Cast}}<option value="{{.ID}}" {{if eq .ID $cur}}selected{{end}}>{{.Label}}</option>{{end}}
+                </select>
+              </td>
+            {{end}}
+          </tr>
+        {{end}}
+      </tbody>
+    </table>
+  </div>
+  <div class="form__actions"><button type="submit" class="btn btn--primary">Save chart</button></div>
+</form>
+{{end}}

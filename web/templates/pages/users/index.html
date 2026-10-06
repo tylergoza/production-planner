@@ -1,0 +1,24 @@
+{{define "content"}}
+<div class="page-head">
+  <div><h1>Users</h1><p class="muted">Everyone who can sign in and make changes. Administrators can also manage users and settings.</p></div>
+  <a class="btn btn--primary" href="/admin/users/new">Add user</a>
+</div>
+<div class="table-wrap">
+  <table class="table table--stack">
+    <thead><tr><th>Username</th><th>Name</th><th>Role</th><th><span class="sr-only">Actions</span></th></tr></thead>
+    <tbody>
+      {{range .Users}}
+        <tr>
+          <td data-label="Username"><strong>{{.Username}}</strong>{{if eq .ID $.User.ID}} <span class="muted small">(you)</span>{{end}}</td>
+          <td data-label="Name">{{.DisplayName}}</td>
+          <td data-label="Role">{{if .IsAdmin}}Administrator{{else}}Editor{{end}}</td>
+          <td class="actions">
+            <a class="btn btn--ghost btn--sm" href="/admin/users/{{.ID}}/edit">Edit</a>
+            {{if ne .ID $.User.ID}}{{template "delete-button" (dict "Action" (printf "/admin/users/%d/delete" .ID) "CSRF" $.CSRF "Label" "Delete" "Confirm" (printf "Delete user %s?" .Username))}}{{end}}
+          </td>
+        </tr>
+      {{end}}
+    </tbody>
+  </table>
+</div>
+{{end}}

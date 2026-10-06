@@ -1,0 +1,20 @@
+{{define "content"}}
+{{$p := .P}}
+<nav class="crumbs no-print"><a href="/productions/{{$p.ID}}/mics">Mic chart</a> › Version {{.V.Version}}</nav>
+<div class="section__head no-print">
+  <div>
+    <h2 class="section__title">Version {{.V.Version}}{{if .IsLatest}} <span class="badge badge--chart-final">Latest final</span>{{end}}</h2>
+    <p class="muted small">Finalized {{fmtTime .V.FinalizedAt}}{{with .V.FinalizedBy}} by {{.}}{{end}}{{with .V.Note}} · {{.}}{{end}}</p>
+  </div>
+  <div class="page-head__actions">
+    <button type="button" class="btn btn--sm" data-controller="print" data-action="print#print">Print</button>
+  </div>
+</div>
+<div class="print-only">
+  <h1>{{$p.Title}}: mic chart</h1>
+  <p>Final v{{.V.Version}} · {{fmtTime .V.FinalizedAt}}</p>
+</div>
+{{template "mic-grid" .Grid}}
+{{if gt .V.Version 1}}<p class="legend small muted no-print"><span class="legend__changed">Outlined</span> = changed from version {{add .V.Version -1}} ({{pluralize .Grid.Changed "cell"}}).</p>{{end}}
+{{template "mic-lists" .Grid}}
+{{end}}

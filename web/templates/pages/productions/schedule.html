@@ -1,0 +1,31 @@
+{{define "content"}}
+{{$p := .P}}
+<div class="two-col two-col--wide-left">
+  <section>
+    {{if .Events}}
+    <div class="table-wrap">
+      <table class="table table--stack">
+        <thead><tr><th>When</th><th>What</th><th>Notes</th><th><span class="sr-only">Actions</span></th></tr></thead>
+        <tbody>
+          {{range .Events}}
+            <tr class="{{if lt .Date today}}is-past{{end}}">
+              <td data-label="When"><div>{{.When}}<br><span class="muted small">{{relDays .Date}}</span></div></td>
+              <td data-label="What"><span class="badge badge--event-{{.Kind}}">{{eventKindLabel .Kind}}</span>{{with .Label}} {{.}}{{end}}</td>
+              <td data-label="Notes"><div class="small">{{range lines .Notes}}{{.}}<br>{{end}}</div></td>
+              <td class="actions"><a class="btn btn--ghost btn--sm" href="/events/{{.ID}}/edit">Edit</a></td>
+            </tr>
+          {{end}}
+        </tbody>
+      </table>
+    </div>
+    {{else}}
+      <div class="empty empty--inline"><p>No dates yet. Add rehearsals and performances here.</p></div>
+    {{end}}
+  </section>
+  <section class="card">
+    <h2 class="section__title">Add a date</h2>
+    {{template "errors" .Errors}}
+    {{template "event-fields" .}}
+  </section>
+</div>
+{{end}}

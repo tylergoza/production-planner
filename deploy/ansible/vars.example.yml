@@ -1,0 +1,36 @@
+# Copy to vars.yml (gitignored) and fill in. Anything in defaults.yml can be
+# overridden here too.
+
+# Public address of the app. Caddy gets its HTTPS certificate for this name.
+app_domain: productions.example.org
+# The domain as added under Networking → Domains in DigitalOcean, with your
+# registrar's nameservers pointed at ns1/ns2/ns3.digitalocean.com. The
+# provision play creates the A record for app_domain in it.
+dns_zone: example.org
+
+# Project to put the droplet in (Projects in the control panel sidebar).
+do_project: My Project
+
+# Datacenter, droplet size and OS. These are the defaults: New York 3,
+# $6/month, Ubuntu 26.04.
+do_region: nyc3
+do_size: s-1vcpu-1gb
+do_image: ubuntu-26-04-x64
+droplet_name: production-planner
+
+# Extra droplet tags, e.g. ones your own cloud firewalls target. If those
+# firewalls already allow SSH/HTTP/HTTPS, also turn off the play's own.
+# do_extra_tags: [website, ssh]
+# do_firewall: false
+
+# A dedicated deploy key (see the README) instead of your default ssh setup.
+# ssh_private_key_file: ~/.ssh/planner_deploy
+# ssh_identity_agent: SSH_AUTH_SOCK   # if ~/.ssh/config sends ssh to another agent
+# Your own keys (e.g. on a YubiKey) for logging in by hand alongside it.
+# ssh_authorized_keys: [~/.ssh/id_ed25519_sk.pub]
+
+# tz: America/Chicago
+
+# The maintenance tracker (token from PP_TRACKER_TOKEN in the environment).
+# Or leave unset and connect it in the app under Settings.
+# tracker_url: https://maintenance.example.org

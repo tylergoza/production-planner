@@ -1,0 +1,45 @@
+{{define "content"}}
+<div class="page-head"><div><h1>Settings</h1></div></div>
+<div class="card narrow">
+  {{template "errors" .Errors}}
+  <form method="post" action="/admin/settings" class="form">
+    {{template "csrf" .CSRF}}
+    <div class="field">
+      <label for="site_name">Site name</label>
+      <input id="site_name" name="site_name" value="{{.SiteNameValue}}" required>
+    </div>
+    <fieldset class="fieldset">
+      <legend>Maintenance tracker</legend>
+      <p class="hint">Pick items, supplies and mics from the maintenance tracker and see how many there are. In the tracker, an admin opens <strong>API</strong>, makes a token for "Production planner", and pastes it here.</p>
+      <div class="field">
+        <label for="tracker_url">Address</label>
+        {{if .TrackerURLFromEnv}}
+          <input id="tracker_url" value="{{.TrackerURLValue}}" disabled>
+          <p class="hint">Set by the server (TRACKER_URL).</p>
+        {{else}}
+          <input id="tracker_url" name="tracker_url" value="{{.TrackerURLValue}}" inputmode="url" autocomplete="off" placeholder="https://maintenance.example.org">
+        {{end}}
+      </div>
+      <div class="field">
+        <label for="tracker_token">API token</label>
+        {{if .TrackerTokenFromEnv}}
+          <input id="tracker_token" value="Set by the server (TRACKER_TOKEN)" disabled>
+        {{else}}
+          <input id="tracker_token" name="tracker_token" type="password" autocomplete="off" placeholder="{{if .TrackerTokenSet}}Saved; paste a new one to replace it{{else}}mt_…{{end}}">
+          {{if .TrackerTokenSet}}
+            <label class="check small"><input type="checkbox" name="clear_token" value="1"> Forget the saved token</label>
+          {{end}}
+        {{end}}
+      </div>
+      <p class="hint">Saving checks that the tracker answers.</p>
+    </fieldset>
+    <div class="form__actions"><button type="submit" class="btn btn--primary">Save settings</button></div>
+  </form>
+</div>
+
+<div class="card narrow">
+  <h2>Backup</h2>
+  <p>Download a complete copy of the database. To move the site to another server, stop the app there, put this file at its database path, and start it again.</p>
+  <a class="btn" href="/admin/backup" download>Download backup</a>
+</div>
+{{end}}

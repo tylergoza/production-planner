@@ -1,0 +1,131 @@
+{{/* Form error list. Pass .Errors ([]string). */}}
+{{define "errors"}}
+  {{if .}}
+    <div class="alert alert--error" role="alert">
+      <strong>Please fix the following:</strong>
+      <ul>{{range .}}<li>{{.}}</li>{{end}}</ul>
+    </div>
+  {{end}}
+{{end}}
+
+{{define "csrf"}}<input type="hidden" name="_csrf" value="{{.}}">{{end}}
+
+{{/* Delete button with confirmation. dict "Action" url "CSRF" token "Label" text "Confirm" message */}}
+{{define "delete-button"}}
+  <form method="post" action="{{.Action}}" class="inline-form"
+        data-controller="confirm" data-confirm-message-value="{{.Confirm}}" data-action="submit->confirm#check">
+    {{template "csrf" .CSRF}}
+    <button type="submit" class="btn btn--danger-ghost btn--sm">{{.Label}}</button>
+  </form>
+{{end}}
+
+{{/* Up/down buttons for a list. dict "Action" url "CSRF" token "Next" returnURL */}}
+{{define "move-buttons"}}
+  <form method="post" action="{{.Action}}" class="inline-form move">
+    {{template "csrf" .CSRF}}
+    <input type="hidden" name="next" value="{{.Next}}">
+    <button type="submit" name="dir" value="up" class="btn btn--ghost btn--sm" aria-label="Move up" title="Move up">↑</button>
+    <button type="submit" name="dir" value="down" class="btn btn--ghost btn--sm" aria-label="Move down" title="Move down">↓</button>
+  </form>
+{{end}}
+
+{{/* Progress bar. Pass a store.Tally. */}}
+{{define "progress"}}<progress class="progress{{if and .Total (eq .Done .Total)}} progress--done{{end}}" max="{{if .Total}}{{.Total}}{{else}}1{{end}}" value="{{.Done}}">{{.Percent}}%</progress>{{end}}
+
+{{define "production-badge"}}<span class="badge badge--prod-{{.}}">{{productionStatusLabel .}}</span>{{end}}
+{{define "prep-badge"}}<span class="badge badge--prep-{{.}}">{{prepStatusLabel .}}</span>{{end}}
+{{define "need-badge"}}<span class="badge badge--need-{{.}}">{{needStatusLabel .}}</span>{{end}}
+{{define "chart-badge"}}<span class="badge badge--chart-{{.Key}}">{{.Label}}</span>{{end}}
+
+{{/* A production's title and tabs, above each of its pages. Pass the page data. */}}
+{{define "prod-head"}}
+  {{$p := .P}}
+  <nav class="crumbs" aria-label="Breadcrumb"><a href="/productions">Productions</a></nav>
+  <div class="page-head prod-head">
+    <div>
+      <h1>{{$p.Title}} {{template "production-badge" $p.Status}}</h1>
+      <p class="muted">{{with $p.Kind}}{{.}}{{end}}{{if and $p.Kind $p.Venue}} · {{end}}{{with $p.Venue}}{{.}}{{end}}{{with $p.Director}} · Directed by {{.}}{{end}}</p>
+    </div>
+    <div class="page-head__actions">
+      <a class="btn btn--ghost btn--sm" href="/productions/{{$p.ID}}/edit">Edit details</a>
+    </div>
+  </div>
+  <nav class="tabs" aria-label="{{$p.Title}}">
+    <a href="/productions/{{$p.ID}}" {{if eq .Tab "overview"}}aria-current="page"{{end}}>Overview</a>
+    <a href="/productions/{{$p.ID}}/schedule" {{if eq .Tab "schedule"}}aria-current="page"{{end}}>Schedule</a>
+    <a href="/productions/{{$p.ID}}/cast" {{if eq .Tab "cast"}}aria-current="page"{{end}}>Cast &amp; scenes</a>
+    <a href="/productions/{{$p.ID}}/mics" {{if eq .Tab "mics"}}aria-current="page"{{end}}>Mic chart</a>
+    <a href="/productions/{{$p.ID}}/prep" {{if eq .Tab "prep"}}aria-current="page"{{end}}>Readiness</a>
+    <a href="/productions/{{$p.ID}}/needs" {{if eq .Tab "needs"}}aria-current="page"{{end}}>Needs</a>
+  </nav>
+{{end}}
+
+{{/* The mic chart grid: mics down, scenes across. Pass a store.Grid. */}}
+{{define "mic-grid"}}
+  <div class="chart-wrap">
+    <table class="chart">
+      <thead>
+        <tr>
+          <th scope="col" class="chart__corner">Mic</th>
+          {{range .Scenes}}<th scope="col" class="chart__scene"><span>{{.Label}}</span>{{with .Sub}}<small>{{.}}</small>{{end}}</th>{{end}}
+        </tr>
+      </thead>
+      <tbody>
+        {{range .Rows}}
+          <tr>
+            <th scope="row" class="chart__mic">{{.Mic.Label}}{{with .Mic.Sub}}<small>{{.}}</small>{{end}}</th>
+            {{range .Cells}}
+              <td class="chart__cell{{if .Assigned}} is-on{{end}}{{if .Swap}} is-swap{{end}}{{if .Conflict}} is-conflict{{end}}{{if .Changed}} is-changed{{end}}"
+                  {{if .Changed}}title="Was: {{if .Was}}{{.Was}}{{else}}nobody{{end}}"{{end}}>
+                {{if .Assigned}}<span class="chart__who">{{.Holder.Name}}</span>{{with .Holder.Sub}}<small>{{.}}</small>{{end}}{{else if .Changed}}<span class="muted small">(was {{.Was}})</span>{{end}}
+              </td>
+            {{end}}
+          </tr>
+        {{end}}
+      </tbody>
+    </table>
+  </div>
+{{end}}
+
+{{/* Who gets which mic, and the swaps between scenes. Pass a store.Grid. */}}
+{{define "mic-lists"}}
+  <div class="two-col">
+    <section class="card">
+      <h2 class="section__title">Mic swaps</h2>
+      {{if .Swaps}}
+        <ol class="swaps">
+          {{range .Swaps}}
+            <li>
+              <strong>Going into {{.Scene.Label}}</strong>{{with .Scene.Sub}} <span class="muted small">{{.}}</span>{{end}}
+              <ul>
+                {{range .Moves}}
+                  <li><span class="mic-tag">{{.Mic.Label}}</span>
+                    {{if and .From .To}}from {{.From}} → <strong>{{.To}}</strong>
+                    {{else if .To}}on <strong>{{.To}}</strong>
+                    {{else}}off {{.From}}{{end}}</li>
+                {{end}}
+              </ul>
+            </li>
+          {{end}}
+        </ol>
+      {{else}}
+        <p class="muted">No mic changes hands between scenes.</p>
+      {{end}}
+    </section>
+    <section class="card">
+      <h2 class="section__title">By person</h2>
+      {{if .People}}
+        <ul class="people">
+          {{range .People}}
+            <li>
+              <strong>{{.Name}}</strong>{{with .Sub}} <span class="muted">({{.}})</span>{{end}}
+              <ul>{{range .Uses}}<li><span class="mic-tag">{{.Mic.Label}}</span> {{.Scenes}}</li>{{end}}</ul>
+            </li>
+          {{end}}
+        </ul>
+      {{else}}
+        <p class="muted">Nobody has a mic yet.</p>
+      {{end}}
+    </section>
+  </div>
+{{end}}

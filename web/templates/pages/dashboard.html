@@ -1,0 +1,60 @@
+{{define "content"}}
+<div class="page-head">
+  <div><h1>Dashboard</h1><p class="muted">Productions in the works and what's coming up.</p></div>
+  <div class="page-head__actions"><a class="btn btn--primary" href="/productions/new">New production</a></div>
+</div>
+
+{{if .Productions}}
+  <div class="card-grid">
+    {{range .Productions}}{{template "production-card" .}}{{end}}
+  </div>
+{{else}}
+  <div class="empty">
+    <h2>Nothing in the works</h2>
+    <p>Add a production to start planning its dates, mic chart and everything that has to be ready.</p>
+    <p><a class="btn btn--primary" href="/productions/new">New production</a></p>
+  </div>
+{{end}}
+
+{{if .Upcoming}}
+<section class="section">
+  <h2 class="section__title">Coming up</h2>
+  <div class="table-wrap">
+    <table class="table table--stack">
+      <thead><tr><th>When</th><th>What</th><th>Production</th></tr></thead>
+      <tbody>
+        {{range .Upcoming}}
+          <tr>
+            <td data-label="When"><div>{{.When}} <span class="muted small">({{relDays .Date}})</span></div></td>
+            <td data-label="What"><span class="badge badge--event-{{.Kind}}">{{.Title}}</span></td>
+            <td data-label="Production"><a href="/productions/{{.ProductionID}}">{{.ProductionTitle}}</a></td>
+          </tr>
+        {{end}}
+      </tbody>
+    </table>
+  </div>
+</section>
+{{end}}
+{{end}}
+
+{{/* One production's card. Pass a store.ProductionSummary. */}}
+{{define "production-card"}}
+  <a class="card card--link prod-card" href="/productions/{{.ID}}">
+    <div class="prod-card__head">
+      <h2 class="card__title">{{.Title}}</h2>
+      {{template "production-badge" .Status}}
+    </div>
+    {{with .Kind}}<p class="muted small">{{.}}</p>{{end}}
+    {{with .NextEvent}}
+      <p class="prod-card__next"><strong>{{.Title}}</strong> {{relDays .Date}}<br><span class="muted small">{{.When}}</span></p>
+    {{else}}
+      <p class="muted small">{{if .LastDate}}Last date was {{fmtDate .LastDate}}{{else}}No dates yet{{end}}</p>
+    {{end}}
+    <dl class="prod-card__stats">
+      <div><dt>Ready</dt><dd>{{.Prep.Done}} of {{.Prep.Total}}</dd></div>
+      <div><dt>Needs gathered</dt><dd>{{.Needs.Done}} of {{.Needs.Total}}</dd></div>
+      <div><dt>Mic chart</dt><dd>{{if .MicVersion}}v{{.MicVersion}}{{else}}{{if .Mics}}Draft{{else}}—{{end}}{{end}}</dd></div>
+    </dl>
+    {{template "progress" .Prep}}
+  </a>
+{{end}}

@@ -1,0 +1,19 @@
+{{define "content"}}
+<div class="card narrow">
+  <h2 class="section__title">Edit {{.Form.Name}}</h2>
+  {{if .Form.FromTracker}}<p class="muted small">From the maintenance tracker{{with .TrackerLink}} · <a href="{{.}}" target="_blank" rel="noopener">open it there</a>{{end}}.</p>{{end}}
+  {{with .Form.UpdatedBy}}<p class="muted small">Last changed by {{.}}, {{fmtTime $.Form.UpdatedAt}}.</p>{{end}}
+  {{template "errors" .Errors}}
+  <form method="post" action="/needs/{{.Form.ID}}" class="form">
+    {{template "csrf" .CSRF}}
+    {{template "need-fields" .}}
+    <div class="form__actions">
+      <button type="submit" class="btn btn--primary">Save</button>
+      <a class="btn btn--ghost" href="/productions/{{.P.ID}}/needs">Cancel</a>
+    </div>
+  </form>
+</div>
+<div class="card narrow">
+  {{template "delete-button" (dict "Action" (printf "/needs/%d/delete" .Form.ID) "CSRF" .CSRF "Label" "Remove" "Confirm" (printf "Remove %s from the list?" .Form.Name))}}
+</div>
+{{end}}

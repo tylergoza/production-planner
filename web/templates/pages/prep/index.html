@@ -1,0 +1,48 @@
+{{define "content"}}
+{{$p := .P}}
+<div class="section__head">
+  <div class="prep-total">
+    <strong>{{.Total.Done}} of {{.Total.Total}} ready</strong>
+    {{template "progress" .Total}}
+  </div>
+  <p class="small muted">Mic chart: {{template "chart-badge" .Chart}} <a href="/productions/{{$p.ID}}/mics">open</a></p>
+</div>
+
+<div class="two-col two-col--wide-left">
+  <div>
+    {{range .Groups}}
+      <section class="section dept" id="dept-{{.Department}}">
+        <div class="section__head">
+          <h2 class="section__title">{{deptLabel .Department}} <span class="count">{{.Tally.Done}}/{{.Tally.Total}}</span></h2>
+          {{template "progress" .Tally}}
+        </div>
+        <div class="table-wrap">
+          <table class="table table--stack">
+            <thead><tr><th>Item</th><th>Who</th><th>Ready by</th><th>Status</th><th><span class="sr-only">Actions</span></th></tr></thead>
+            <tbody>
+              {{range .Items}}
+                <tr id="prep-{{.ID}}" class="prep-row prep-row--{{.Status}}">
+                  <td data-label="Item"><div><strong>{{.Name}}</strong>{{with .SceneLabel}} <span class="chip">Scene {{.}}</span>{{end}}{{with .Notes}}<br><span class="muted small">{{.}}</span>{{end}}</div></td>
+                  <td data-label="Who">{{.Owner}}</td>
+                  <td data-label="Ready by">{{if .DueOn}}<span class="{{if and (ne .Status "ready") (overdue .DueOn)}}text-alert{{end}}">{{fmtDate .DueOn}}</span>{{end}}</td>
+                  <td data-label="Status">{{template "status-select" (dict "Action" (printf "/prep/%d/status" .ID) "CSRF" $.CSRF "Status" .Status "Statuses" $.Statuses "Label" "prep" "ID" .ID)}}</td>
+                  <td class="actions"><a class="btn btn--ghost btn--sm" href="/prep/{{.ID}}/edit">Edit</a></td>
+                </tr>
+              {{end}}
+            </tbody>
+          </table>
+        </div>
+      </section>
+    {{else}}
+      <div class="empty empty--inline">
+        <p>Nothing here yet. List the props, costumes, music, sound effects, lighting cues and anything else that has to be ready, and mark each one off as it is.</p>
+      </div>
+    {{end}}
+  </div>
+  <section class="card add-box">
+    <h2 class="section__title">Add something to get ready</h2>
+    {{template "errors" .Errors}}
+    {{template "prep-fields" (dict "Form" .Form "Departments" .Departments "Statuses" .Statuses "Scenes" .Scenes "Action" (printf "/productions/%d/prep" $p.ID) "CSRF" .CSRF)}}
+  </section>
+</div>
+{{end}}

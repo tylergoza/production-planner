@@ -1,0 +1,85 @@
+{{define "content"}}
+{{$p := .P}}
+<p class="muted">The mic chart is built from these: who has each mic in each scene. Keep scenes in running order.</p>
+<div class="two-col">
+  <section id="cast">
+    <h2 class="section__title">Cast <span class="count">{{len .Cast}}</span></h2>
+    {{if .Cast}}
+    <div class="table-wrap">
+      <table class="table table--stack">
+        <thead><tr><th>Character</th><th>Played by</th><th><span class="sr-only">Actions</span></th></tr></thead>
+        <tbody>
+          {{range .Cast}}
+            <tr>
+              <td data-label="Character"><div><strong>{{.Character}}</strong>{{with .Notes}}<br><span class="muted small">{{.}}</span>{{end}}</div></td>
+              <td data-label="Played by">{{.Person}}</td>
+              <td class="actions">
+                {{template "move-buttons" (dict "Action" (printf "/cast/%d/move" .ID) "CSRF" $.CSRF "Next" (printf "/productions/%d/cast#cast" $p.ID))}}
+                <a class="btn btn--ghost btn--sm" href="/cast/{{.ID}}/edit">Edit</a>
+              </td>
+            </tr>
+          {{end}}
+        </tbody>
+      </table>
+    </div>
+    {{end}}
+    <div class="card">
+      <h3>Add to the cast</h3>
+      {{template "errors" .CastErrors}}
+      {{template "cast-fields" (dict "Form" .CastForm "Action" (printf "/productions/%d/cast" $p.ID) "CSRF" .CSRF)}}
+      <details class="paste">
+        <summary>Paste a list</summary>
+        <form method="post" action="/productions/{{$p.ID}}/cast/paste" class="form">
+          {{template "csrf" .CSRF}}
+          <div class="field">
+            <label for="cast-list">One per line</label>
+            <textarea id="cast-list" name="list" rows="6" placeholder="Mary - Ava Brooks&#10;Joseph - Eli Carter&#10;Narrator - Jordan Lee"></textarea>
+            <p class="hint">Character, then who plays it, split by a dash, a colon or a tab (so you can paste two columns from a spreadsheet).</p>
+          </div>
+          <div class="form__actions"><button type="submit" class="btn">Add them all</button></div>
+        </form>
+      </details>
+    </div>
+  </section>
+
+  <section id="scenes">
+    <h2 class="section__title">Scenes <span class="count">{{len .Scenes}}</span></h2>
+    {{if .Scenes}}
+    <div class="table-wrap">
+      <table class="table table--stack">
+        <thead><tr><th>#</th><th>Title</th><th><span class="sr-only">Actions</span></th></tr></thead>
+        <tbody>
+          {{range .Scenes}}
+            <tr>
+              <td data-label="#"><strong>{{.Number}}</strong></td>
+              <td data-label="Title"><div>{{.Title}}{{with .Notes}}<br><span class="muted small">{{.}}</span>{{end}}</div></td>
+              <td class="actions">
+                {{template "move-buttons" (dict "Action" (printf "/scenes/%d/move" .ID) "CSRF" $.CSRF "Next" (printf "/productions/%d/cast#scenes" $p.ID))}}
+                <a class="btn btn--ghost btn--sm" href="/scenes/{{.ID}}/edit">Edit</a>
+              </td>
+            </tr>
+          {{end}}
+        </tbody>
+      </table>
+    </div>
+    {{end}}
+    <div class="card">
+      <h3>Add a scene</h3>
+      {{template "errors" .SceneErrors}}
+      {{template "scene-fields" (dict "Form" .SceneForm "Action" (printf "/productions/%d/scenes" $p.ID) "CSRF" .CSRF)}}
+      <details class="paste">
+        <summary>Paste a list</summary>
+        <form method="post" action="/productions/{{$p.ID}}/scenes/paste" class="form">
+          {{template "csrf" .CSRF}}
+          <div class="field">
+            <label for="scene-list">One per line, in running order</label>
+            <textarea id="scene-list" name="list" rows="6" placeholder="1 - The shepherds' field&#10;2 - Gabriel visits Mary&#10;Finale"></textarea>
+            <p class="hint">Number, then title, split by a dash, a colon or a tab. A line with just a title is fine too.</p>
+          </div>
+          <div class="form__actions"><button type="submit" class="btn">Add them all</button></div>
+        </form>
+      </details>
+    </div>
+  </section>
+</div>
+{{end}}

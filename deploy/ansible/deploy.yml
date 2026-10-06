@@ -1,0 +1,187 @@
+# Tests and builds the Linux binary on this machine, then installs it, the
+# systemd unit and the Caddyfile on every droplet tagged do_tag. The database
+# is backed up first whenever the binary changes (migrations run on start).
+#
+#   export DIGITALOCEAN_TOKEN=...
+#   ansible-playbook deploy.yml             # or `make deploy` from the repo root
+#
+# To roll back, check out the previous commit and deploy it. If its
+# migrations changed the database, restore the pre-deploy backup as well
+# (README: Moving between hosts).
+
+- name: Build
+  hosts: localhost
+  gather_facts: false
+  vars_files: [defaults.yml, vars.yml]
+  vars:
+    repo_root: "{{ playbook_dir | dirname | dirname }}"
+  tasks:
+    - name: Run the tests
+      ansible.builtin.command:
+        cmd: make test
+        chdir: "{{ repo_root }}"
+      when: not skip_tests | bool
+      changed_when: false
+
+    - name: Build the binary
+      ansible.builtin.command:
+        cmd: make build-linux
+        chdir: "{{ repo_root }}"
+      changed_when: true
+
+    - name: Find the droplets
+      ansible.builtin.include_tasks: tasks/find_droplets.yml
+
+    - name: Check there's somewhere to deploy to
+      ansible.builtin.assert:
+        that: groups['app'] | default([]) | length > 0
+        fail_msg: No droplets are tagged {{ do_tag }}. Run provision.yml first.
+        quiet: true
+
+- name: Install
+  hosts: app
+  gather_facts: false
+  vars_files: [defaults.yml, vars.yml]
+  vars:
+    binary: "{{ playbook_dir | dirname | dirname }}/bin/production-planner-linux-amd64"
+    # Commands run as the service user so the files they write stay its own.
+    # runuser rather than become: Ubuntu 26.04's default sudo is sudo-rs.
+    planner: [runuser, -u, planner, --, /usr/local/bin/production-planner, -db, "{{ app_db }}"]
+  handlers:
+    - name: Restart the app
+      ansible.builtin.systemd_service:
+        name: production-planner
+        state: restarted
+        daemon_reload: true
+
+    - name: Reload Caddy
+      ansible.builtin.systemd_service:
+        name: caddy
+        state: reloaded
+  tasks:
+    - name: Checksum the new binary
+      ansible.builtin.stat:
+        path: "{{ binary }}"
+      delegate_to: localhost
+      register: new_binary
+
+    - name: Checksum the installed binary
+      ansible.builtin.stat:
+        path: /usr/local/bin/production-planner
+      register: old_binary
+
+    - name: Check for a database
+      ansible.builtin.stat:
+        path: "{{ app_db }}"
+      register: db
+
+    - name: Back up the database
+      ansible.builtin.command:
+        argv: "{{ planner + ['backup', app_backup_dir ~ '/pre-deploy-' ~ now(utc=true, fmt='%Y%m%dT%H%M%SZ') ~ '.db'] }}"
+      when: db.stat.exists and old_binary.stat.checksum | default('') != new_binary.stat.checksum
+      changed_when: true
+
+    - name: Install the binary
+      ansible.builtin.copy:
+        src: "{{ binary }}"
+        dest: /usr/local/bin/production-planner
+        mode: "0755"
+      notify: Restart the app
+
+    - name: Install the systemd unit
+      ansible.builtin.copy:
+        src: "{{ playbook_dir }}/../production-planner.service"
+        dest: /etc/systemd/system/production-planner.service
+        mode: "0644"
+      notify: Restart the app
+
+    - name: Create the unit's drop-in folder
+      ansible.builtin.file:
+        path: /etc/systemd/system/production-planner.service.d
+        state: directory
+        mode: "0755"
+
+    # The unit in the repo has a placeholder TZ; this overrides it. The
+    # tracker connection goes here too when it's set, which locks it in
+    # the app's Settings. Readable by root only: it holds the API token.
+    - name: Set the time zone and maintenance tracker connection
+      ansible.builtin.copy:
+        content: |
+          [Service]
+          Environment=TZ={{ tz }}
+          {% if tracker_url %}
+          Environment="TRACKER_URL={{ tracker_url }}"
+          {% endif %}
+          {% if tracker_token %}
+          Environment="TRACKER_TOKEN={{ tracker_token }}"
+          {% endif %}
+        dest: /etc/systemd/system/production-planner.service.d/override.conf
+        mode: "0600"
+      no_log: true
+      notify: Restart the app
+
+    - name: Install the Caddyfile
+      ansible.builtin.template:
+        src: Caddyfile.j2
+        dest: /etc/caddy/Caddyfile
+        mode: "0644"
+        validate: caddy validate --adapter caddyfile --config %s
+      notify: Reload Caddy
+
+    # Before the app first starts, so /setup is never reachable.
+    - name: Create the admin user
+      when: not db.stat.exists
+      vars:
+        password: "{{ admin_password or lookup('ansible.builtin.password', '/dev/null', length=24, chars=['ascii_letters', 'digits']) }}"
+      block:
+        - name: Pick the admin password
+          ansible.builtin.set_fact:
+            new_admin_password: "{{ password }}"
+          no_log: true
+
+        - name: Create {{ admin_username }}
+          ansible.builtin.command:
+            argv: "{{ planner + ['create-user', admin_username, '--admin'] }}"
+            stdin: "{{ new_admin_password }}"
+          no_log: true
+          changed_when: true
+
+    - name: Start the app
+      ansible.builtin.systemd_service:
+        name: production-planner
+        enabled: true
+        state: started
+        daemon_reload: true
+
+    - name: Apply restarts and reloads
+      ansible.builtin.meta: flush_handlers
+
+    - name: Wait for the app to answer
+      ansible.builtin.uri:
+        url: http://127.0.0.1:8090/healthz
+      register: health
+      until: health.status == 200
+      retries: 15
+      delay: 2
+
+    - name: Find old pre-deploy backups
+      ansible.builtin.find:
+        paths: "{{ app_backup_dir }}"
+        patterns: pre-deploy-*.db
+      register: backups
+
+    - name: Remove all but the newest {{ keep_backups }}
+      ansible.builtin.file:
+        path: "{{ item.path }}"
+        state: absent
+      loop: "{{ (backups.files | sort(attribute='mtime', reverse=true))[keep_backups | int :] }}"
+      loop_control:
+        label: "{{ item.path | basename }}"
+
+    - name: Done
+      ansible.builtin.debug:
+        msg: >-
+          {{ 'Running at https://' ~ app_domain ~ '. Sign in as ' ~ admin_username ~ ' with password '
+             ~ new_admin_password ~ ', change it, and connect the maintenance tracker under Settings'
+             ~ (' (already set from tracker_url/tracker_token)' if tracker_url and tracker_token else '') ~ '.'
+             if new_admin_password is defined else 'Deployed to https://' ~ app_domain ~ '.' }}

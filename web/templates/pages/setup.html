@@ -1,0 +1,33 @@
+{{define "content"}}
+<div class="auth-card card">
+  <h1>Welcome</h1>
+  <p class="muted">No accounts exist yet. Create the first administrator account for this site.</p>
+  {{template "errors" .Errors}}
+  <form method="post" action="/setup" class="form">
+    {{template "csrf" .CSRF}}
+    <div class="field">
+      <label for="site_name">Site name</label>
+      <input id="site_name" name="site_name" value="{{.SiteNameValue}}" required>
+      <p class="hint">Shown in the header and on the installed app, e.g. "Mountain View Productions".</p>
+    </div>
+    <div class="field">
+      <label for="display_name">Your name</label>
+      <input id="display_name" name="display_name" value="{{.DisplayName}}" autocomplete="name">
+    </div>
+    <div class="field">
+      <label for="username">Username</label>
+      <input id="username" name="username" value="{{.Username}}" autocomplete="username" autocapitalize="none" required>
+    </div>
+    <div class="field">
+      <label for="password">Password</label>
+      <input id="password" name="password" type="password" autocomplete="new-password" minlength="10" required>
+      <p class="hint">At least 10 characters.</p>
+    </div>
+    <div class="field">
+      <label for="password_confirm">Confirm password</label>
+      <input id="password_confirm" name="password_confirm" type="password" autocomplete="new-password" minlength="10" required>
+    </div>
+    <button type="submit" class="btn btn--primary btn--block">Create account</button>
+  </form>
+</div>
+{{end}}

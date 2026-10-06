@@ -1,0 +1,79 @@
+# Defaults for every setting. Override any of them in vars.yml (gitignored;
+# start from vars.example.yml), which is loaded after this file.
+
+# DigitalOcean API token with read/write scope, from the environment so it
+# never lands in a file.
+do_token: "{{ lookup('env', 'DIGITALOCEAN_TOKEN') }}"
+
+# Droplet. `doctl compute size list` / `region list` / `image list-distribution`
+# show the choices. nyc3 is New York 3; s-1vcpu-1gb is the $6/month Basic
+# droplet, which is plenty for this app.
+droplet_name: production-planner
+do_region: nyc3
+do_size: s-1vcpu-1gb
+do_image: ubuntu-26-04-x64
+# Weekly droplet snapshots (adds 20% to the droplet price). The database is
+# the only state, and the pre-deploy backups below sit on the same disk.
+do_backups: true
+do_monitoring: true
+# Project (as named in the control panel) to put the droplet in. Empty means
+# the account's default project.
+do_project: ""
+# Droplets, firewall and deploys all find each other by this tag.
+do_tag: production-planner
+# More tags for the droplet, e.g. ones your own cloud firewalls target.
+# Added to existing droplets too on the next provision.
+do_extra_tags: []
+# Create a cloud firewall (named do_tag) that allows only SSH, HTTP and HTTPS.
+# Turn off if your own firewalls cover the droplet through do_extra_tags.
+do_firewall: true
+
+# Key Ansible connects with. Empty means your normal ssh setup (agent,
+# ~/.ssh/config). Set it to use a dedicated deploy key, e.g. when your usual
+# key is on a hardware token that asks for a PIN, which Ansible can't answer.
+ssh_private_key_file: ""
+# Agent holding that key, if not the one ~/.ssh/config picks (e.g. it points
+# at 1Password but the key was added with ssh-add). SSH_AUTH_SOCK means the
+# agent in your environment; anything else is a socket path.
+ssh_identity_agent: ""
+# Uploaded to your DigitalOcean account if it isn't there yet, and put on the
+# droplet for root when it's created.
+ssh_public_key_file: "{{ (ssh_private_key_file ~ '.pub') if ssh_private_key_file else '~/.ssh/id_ed25519.pub' }}"
+# More public key files to let in as root, e.g. your hardware-token keys when
+# Ansible uses a deploy key. Added on every provision; never removed.
+ssh_authorized_keys: []
+# Who may reach port 22. Narrow this to your own address if it's stable.
+ssh_sources: [0.0.0.0/0, "::/0"]
+
+# Church time zone: decides what "today", "upcoming" and "overdue" mean.
+tz: America/Chicago
+
+# The maintenance tracker to read products, items and supplies from.
+# Leave both empty to set them in the app under Settings instead. When set
+# here they're fixed: Settings shows them but can't change them. Make the
+# token in the tracker under API ("Production planner") and pass it in the
+# environment so it never lands in a file:
+#   export PP_TRACKER_TOKEN=mt_...
+tracker_url: ""
+tracker_token: "{{ lookup('env', 'PP_TRACKER_TOKEN') }}"
+
+# The first deploy to an empty database creates this admin before the app
+# starts, so /setup is never open. Leave PP_ADMIN_PASSWORD unset to get a
+# random password printed at the end of the run.
+admin_username: admin
+admin_password: "{{ lookup('env', 'PP_ADMIN_PASSWORD') }}"
+
+# Deploys back up the database before installing a changed binary, and keep
+# this many of those backups.
+keep_backups: 10
+# `make test` runs before every build; -e skip_tests=true skips it.
+skip_tests: false
+
+# Paths on the droplet, matching deploy/production-planner.service.
+app_data_dir: /var/lib/production-planner
+app_db: "{{ app_data_dir }}/productions.db"
+app_backup_dir: "{{ app_data_dir }}/backups"
+
+do_headers:
+  Authorization: "Bearer {{ do_token }}"
+  Content-Type: application/json

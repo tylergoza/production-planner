@@ -1,0 +1,207 @@
+{{/* Form fields shared by an "add" box on a list page and its edit page. */}}
+
+{{define "event-fields"}}
+  <form method="post" action="{{if .Form.ID}}/events/{{.Form.ID}}{{else}}/productions/{{.P.ID}}/events{{end}}" class="form">
+    {{template "csrf" .CSRF}}
+    <div class="field">
+      <label for="kind">What</label>
+      <select id="kind" name="kind">
+        {{range .Kinds}}<option value="{{.}}" {{if eq . $.Form.Kind}}selected{{end}}>{{eventKindLabel .}}</option>{{end}}
+      </select>
+    </div>
+    <div class="field-row">
+      <div class="field"><label for="date">Date</label><input id="date" name="date" type="date" value="{{.Form.Date}}" required></div>
+      <div class="field"><label for="time">Time <span class="optional">optional</span></label><input id="time" name="time" type="time" value="{{.Form.Time}}"></div>
+    </div>
+    <div class="field">
+      <label for="label">Label <span class="optional">optional</span></label>
+      <input id="label" name="label" value="{{.Form.Label}}" placeholder="e.g. Sunday evening">
+    </div>
+    <div class="field">
+      <label for="notes">Notes <span class="optional">optional</span></label>
+      <textarea id="notes" name="notes" rows="2">{{.Form.Notes}}</textarea>
+    </div>
+    <div class="form__actions">
+      <button type="submit" class="btn btn--primary">{{if .Form.ID}}Save{{else}}Add date{{end}}</button>
+      {{if .Form.ID}}<a class="btn btn--ghost" href="/productions/{{.P.ID}}/schedule">Cancel</a>{{end}}
+    </div>
+  </form>
+{{end}}
+
+{{/* dict "Form" store.CastMember "Action" url "CSRF" token "Cancel" url */}}
+{{define "cast-fields"}}
+  <form method="post" action="{{.Action}}" class="form">
+    {{template "csrf" .CSRF}}
+    <div class="field-row">
+      <div class="field">
+        <label for="character">Character or part</label>
+        <input id="character" name="character" value="{{.Form.Character}}" placeholder="e.g. Mary, Narrator, Choir left">
+      </div>
+      <div class="field">
+        <label for="person">Played by</label>
+        <input id="person" name="person" value="{{.Form.Person}}" autocomplete="off">
+      </div>
+    </div>
+    <div class="field">
+      <label for="cast-notes">Notes <span class="optional">optional</span></label>
+      <input id="cast-notes" name="notes" value="{{.Form.Notes}}" placeholder="e.g. quick change after scene 3">
+    </div>
+    <div class="form__actions">
+      <button type="submit" class="btn btn--primary">{{if .Form.ID}}Save{{else}}Add to cast{{end}}</button>
+      {{with .Cancel}}<a class="btn btn--ghost" href="{{.}}">Cancel</a>{{end}}
+    </div>
+  </form>
+{{end}}
+
+{{/* dict "Form" store.Scene "Action" url "CSRF" token "Cancel" url */}}
+{{define "scene-fields"}}
+  <form method="post" action="{{.Action}}" class="form">
+    {{template "csrf" .CSRF}}
+    <div class="field-row">
+      <div class="field field--narrow">
+        <label for="number">Number</label>
+        <input id="number" name="number" value="{{.Form.Number}}" placeholder="e.g. 3 or 2.1">
+      </div>
+      <div class="field">
+        <label for="scene-title">Title</label>
+        <input id="scene-title" name="title" value="{{.Form.Title}}" placeholder="e.g. The stable, or a song title">
+      </div>
+    </div>
+    <div class="field">
+      <label for="scene-notes">Notes <span class="optional">optional</span></label>
+      <input id="scene-notes" name="notes" value="{{.Form.Notes}}">
+    </div>
+    <div class="form__actions">
+      <button type="submit" class="btn btn--primary">{{if .Form.ID}}Save{{else}}Add scene{{end}}</button>
+      {{with .Cancel}}<a class="btn btn--ghost" href="{{.}}">Cancel</a>{{end}}
+    </div>
+  </form>
+{{end}}
+
+{{/* dict "Form" store.Mic "Kinds" []string "Action" url "CSRF" token "Cancel" url */}}
+{{define "mic-fields"}}
+  <form method="post" action="{{.Action}}" class="form">
+    {{template "csrf" .CSRF}}
+    <div class="field-row">
+      <div class="field field--narrow">
+        <label for="channel">Channel</label>
+        <input id="channel" name="channel" value="{{.Form.Channel}}" inputmode="numeric" placeholder="e.g. 12">
+      </div>
+      <div class="field">
+        <label for="mic-name">Name</label>
+        <input id="mic-name" name="name" value="{{.Form.Name}}" required placeholder="e.g. Lav 3">
+      </div>
+    </div>
+    <div class="field">
+      <span class="label">Kind</span>
+      <div class="segmented">
+        {{range .Kinds}}<label><input type="radio" name="kind" value="{{.}}" {{if eq . $.Form.Kind}}checked{{end}}> {{micKindLabel .}}</label>{{end}}
+      </div>
+    </div>
+    <div class="field">
+      <label for="mic-notes">Notes <span class="optional">optional</span></label>
+      <input id="mic-notes" name="notes" value="{{.Form.Notes}}" placeholder="e.g. spare battery in the green box">
+    </div>
+    <div class="form__actions">
+      <button type="submit" class="btn btn--primary">{{if .Form.ID}}Save{{else}}Add mic{{end}}</button>
+      {{with .Cancel}}<a class="btn btn--ghost" href="{{.}}">Cancel</a>{{end}}
+    </div>
+  </form>
+{{end}}
+
+{{/* dict "Form" store.PrepItem "Departments" "Statuses" "Scenes" "Action" url "CSRF" token "Cancel" url */}}
+{{define "prep-fields"}}
+  <form method="post" action="{{.Action}}" class="form">
+    {{template "csrf" .CSRF}}
+    <div class="field">
+      <label for="prep-name">What has to be ready</label>
+      <input id="prep-name" name="name" value="{{.Form.Name}}" required placeholder="e.g. Angel robes, backing tracks, star effect">
+    </div>
+    <div class="field-row">
+      <div class="field">
+        <label for="department">Department</label>
+        <select id="department" name="department">
+          {{range .Departments}}<option value="{{.}}" {{if eq . $.Form.Department}}selected{{end}}>{{deptLabel .}}</option>{{end}}
+        </select>
+      </div>
+      <div class="field">
+        <label for="prep-status">Status</label>
+        <select id="prep-status" name="status">
+          {{range .Statuses}}<option value="{{.}}" {{if eq . $.Form.Status}}selected{{end}}>{{prepStatusLabel .}}</option>{{end}}
+        </select>
+      </div>
+    </div>
+    <div class="field-row">
+      <div class="field">
+        <label for="owner">Who's on it <span class="optional">optional</span></label>
+        <input id="owner" name="owner" value="{{.Form.Owner}}">
+      </div>
+      <div class="field">
+        <label for="due_on">Ready by <span class="optional">optional</span></label>
+        <input id="due_on" name="due_on" type="date" value="{{.Form.DueOn}}">
+      </div>
+    </div>
+    {{if .Scenes}}
+    <div class="field">
+      <label for="scene_id">For scene <span class="optional">optional</span></label>
+      <select id="scene_id" name="scene_id">
+        <option value="0">Whole show</option>
+        {{range .Scenes}}<option value="{{.ID}}" {{if eq .ID $.Form.SceneID}}selected{{end}}>{{.FullLabel}}</option>{{end}}
+      </select>
+    </div>
+    {{end}}
+    <div class="field">
+      <label for="prep-notes">Notes <span class="optional">optional</span></label>
+      <textarea id="prep-notes" name="notes" rows="2">{{.Form.Notes}}</textarea>
+    </div>
+    <div class="form__actions">
+      <button type="submit" class="btn btn--primary">{{if .Form.ID}}Save{{else}}Add{{end}}</button>
+      {{with .Cancel}}<a class="btn btn--ghost" href="{{.}}">Cancel</a>{{end}}
+    </div>
+  </form>
+{{end}}
+
+{{/* Quick status change. dict "Action" url "CSRF" token "Status" current "Statuses" []string "Label" func-name ("prep"|"need") "ID" anchor-id */}}
+{{define "status-select"}}
+  <form method="post" action="{{.Action}}" class="inline-form status-form" data-controller="autosubmit">
+    {{template "csrf" .CSRF}}
+    <label class="sr-only" for="st-{{.ID}}">Status</label>
+    <select id="st-{{.ID}}" name="status" data-action="autosubmit#submit" class="status-select status-select--{{.Status}}">
+      {{range .Statuses}}<option value="{{.}}" {{if eq . $.Status}}selected{{end}}>{{if eq $.Label "need"}}{{needStatusLabel .}}{{else}}{{prepStatusLabel .}}{{end}}</option>{{end}}
+    </select>
+    <noscript><button type="submit" class="btn btn--sm">Set</button></noscript>
+  </form>
+{{end}}
+
+{{/* Fields for a need: name, how many, department, notes, and status when editing. Pass the page data. */}}
+{{define "need-fields"}}
+    <div class="field">
+      <label for="need-name">What</label>
+      <input id="need-name" name="name" value="{{.Form.Name}}" required>
+    </div>
+    <div class="field-row">
+      <div class="field field--narrow">
+        <label for="quantity">How many</label>
+        <input id="quantity" name="quantity" type="number" min="1" value="{{.Form.Quantity}}" required>
+      </div>
+      <div class="field">
+        <label for="need-dept">Department <span class="optional">optional</span></label>
+        <select id="need-dept" name="department">
+          <option value="">None</option>
+          {{range .Departments}}<option value="{{.}}" {{if eq . $.Form.Department}}selected{{end}}>{{deptLabel .}}</option>{{end}}
+        </select>
+      </div>
+    </div>
+    {{if .Form.ID}}
+    <div class="field">
+      <label for="need-status">Status</label>
+      <select id="need-status" name="status">
+        {{range .Statuses}}<option value="{{.}}" {{if eq . $.Form.Status}}selected{{end}}>{{needStatusLabel .}}</option>{{end}}
+      </select>
+    </div>
+    {{end}}
+    <div class="field">
+      <label for="need-notes">Notes <span class="optional">optional</span></label>
+      <input id="need-notes" name="notes" value="{{.Form.Notes}}" placeholder="e.g. where to get it, who's bringing it">
+    </div>
+{{end}}

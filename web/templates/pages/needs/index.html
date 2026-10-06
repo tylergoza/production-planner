@@ -1,0 +1,116 @@
+{{define "content"}}
+{{$p := .P}}
+<div class="section__head">
+  <div class="prep-total">
+    <strong>{{.Tally.Done}} of {{.Tally.Total}} gathered</strong>
+    {{template "progress" .Tally}}
+  </div>
+</div>
+{{with .TrackerProblem}}<div class="alert alert--error" role="alert">Couldn't check the maintenance tracker: {{.}}</div>{{end}}
+
+<div class="two-col two-col--wide-left">
+  <section>
+    {{if .Needs}}
+    <div class="table-wrap">
+      <table class="table table--stack">
+        <thead><tr><th>What</th><th class="num">Need</th><th>In the tracker</th><th>Status</th><th><span class="sr-only">Actions</span></th></tr></thead>
+        <tbody>
+          {{range .Needs}}
+            <tr class="need-row need-row--{{.Status}}{{if .Short}} is-short{{end}}">
+              <td data-label="What"><div>
+                <strong>{{.Name}}</strong>{{with .Department}} <span class="chip">{{deptLabel .}}</span>{{end}}
+                {{with .Notes}}<br><span class="muted small">{{.}}</span>{{end}}
+              </div></td>
+              <td data-label="Need" class="num"><span class="qty">{{.Quantity}}</span></td>
+              <td data-label="In the tracker"><div class="small">
+                {{if not .FromTracker}}<span class="muted">Not from the tracker: buy or borrow</span>
+                {{else if .Found}}
+                  {{if eq .TrackerKind "supply"}}
+                    {{.Have}} {{.Unit}} on hand {{if eq .Stock "low"}}<span class="badge badge--warn">Low</span>{{else if eq .Stock "out"}}<span class="badge badge--alert">Out</span>{{end}}
+                    {{with .Where}}<br><span class="muted">{{.}}</span>{{end}}
+                  {{else}}
+                    {{.Have}} in all{{with .Where}} <span class="muted">· in {{.}}</span>{{end}}
+                  {{end}}
+                  {{if .Short}}<br><strong class="text-alert">Short by {{.Shortfall}}</strong>{{end}}
+                  {{with .Link}}<br><a href="{{.}}" target="_blank" rel="noopener">Open in tracker</a>{{end}}
+                {{else if $.TrackerProblem}}<span class="muted">Couldn't check</span>
+                {{else}}<span class="text-alert">No longer in the tracker</span>{{end}}
+              </div></td>
+              <td data-label="Status">{{template "status-select" (dict "Action" (printf "/needs/%d/status" .ID) "CSRF" $.CSRF "Status" .Status "Statuses" $.Statuses "Label" "need" "ID" .ID)}}</td>
+              <td class="actions"><a class="btn btn--ghost btn--sm" href="/needs/{{.ID}}/edit">Edit</a></td>
+            </tr>
+          {{end}}
+        </tbody>
+      </table>
+    </div>
+    <p class="muted small">Mark things <em>Gathered</em> once they're set aside for the production, and <em>Put back</em> when they've been returned after it.</p>
+    {{else}}
+      <div class="empty empty--inline"><p>Nothing needed yet. Find chairs, tables, mics, batteries and other supplies in the maintenance tracker, or add something to buy or borrow.</p></div>
+    {{end}}
+  </section>
+
+  <div>
+    <section class="card" id="find">
+      <h2 class="section__title">Find in the maintenance tracker</h2>
+      {{if .TrackerOn}}
+        <form method="get" action="/productions/{{$p.ID}}/needs#find" class="inline-fields">
+          <div class="field"><label for="q" class="sr-only">Search</label><input id="q" type="search" name="q" value="{{.Q}}" placeholder="e.g. chairs, batteries, extension cords"></div>
+          <button type="submit" class="btn btn--sm">Search</button>
+        </form>
+        {{with .SearchError}}<div class="alert alert--error">{{.}}</div>{{end}}
+        {{if .Q}}
+          {{if or .FoundProducts .FoundSupplies}}
+            <ul class="pick-list">
+              {{range .FoundProducts}}
+                <li>
+                  <div><strong>{{.Name}}</strong><br><span class="muted small">{{.Total}} in all, in {{pluralize .PlaceCount "place"}}</span></div>
+                  {{template "need-add" (dict "Kind" "product" "ID" .ID "Name" .Name "P" $p "CSRF" $.CSRF "Departments" $.Departments)}}
+                </li>
+              {{end}}
+              {{range .FoundSupplies}}
+                <li>
+                  <div><strong>{{.Name}}</strong> <span class="chip">supply</span><br><span class="muted small">{{.OnHand}} {{.Unit}} on hand{{if ne .Stock "ok"}} ({{.Stock}}){{end}} · {{.Place.Path}}</span></div>
+                  {{template "need-add" (dict "Kind" "supply" "ID" .ID "Name" .Name "P" $p "CSRF" $.CSRF "Departments" $.Departments)}}
+                </li>
+              {{end}}
+            </ul>
+          {{else if not .SearchError}}
+            <p class="muted small">Nothing in the tracker matches "{{.Q}}".</p>
+          {{end}}
+        {{end}}
+      {{else}}
+        <p class="muted small">Connect the maintenance tracker in Settings to pick items and supplies from it and see how many there are.</p>
+      {{end}}
+    </section>
+
+    <section class="card">
+      <h2 class="section__title">Something else</h2>
+      <p class="muted small">To buy, borrow or make.</p>
+      {{template "errors" .Errors}}
+      <form method="post" action="/productions/{{$p.ID}}/needs" class="form">
+        {{template "csrf" .CSRF}}
+        {{template "need-fields" .}}
+        <div class="form__actions"><button type="submit" class="btn btn--primary">Add</button></div>
+      </form>
+    </section>
+  </div>
+</div>
+{{end}}
+
+{{/* Add a tracker product or supply. dict "Kind" "ID" "Name" "P" "CSRF" "Departments" */}}
+{{define "need-add"}}
+  <form method="post" action="/productions/{{.P.ID}}/needs" class="need-add">
+    {{template "csrf" .CSRF}}
+    <input type="hidden" name="tracker_kind" value="{{.Kind}}">
+    <input type="hidden" name="tracker_id" value="{{.ID}}">
+    <input type="hidden" name="name" value="{{.Name}}">
+    <label class="sr-only" for="qty-{{.Kind}}-{{.ID}}">How many</label>
+    <input id="qty-{{.Kind}}-{{.ID}}" type="number" name="quantity" value="1" min="1" class="need-add__qty">
+    <label class="sr-only" for="dept-{{.Kind}}-{{.ID}}">Department</label>
+    <select id="dept-{{.Kind}}-{{.ID}}" name="department" class="need-add__dept">
+      <option value="">No department</option>
+      {{range .Departments}}<option value="{{.}}">{{deptLabel .}}</option>{{end}}
+    </select>
+    <button type="submit" class="btn btn--sm">Add</button>
+  </form>
+{{end}}

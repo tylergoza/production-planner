@@ -3,7 +3,8 @@
 <div class="page-head"><div><h1>{{.Title}}</h1></div></div>
 <div class="card narrow">
   {{template "errors" .Errors}}
-  <form method="post" action="{{if .Form.ID}}/productions/{{.Form.ID}}{{else}}/productions{{end}}" class="form">
+  <form method="post" action="{{if .Form.ID}}/productions/{{.Form.ID}}{{else}}/productions{{end}}" class="form"
+        data-controller="reveal" data-action="change->reveal#update">
     {{template "csrf" .CSRF}}
     <div class="field">
       <label for="title">Title</label>
@@ -44,6 +45,23 @@
       <textarea id="notes" name="notes" rows="4">{{.Form.Notes}}</textarea>
       <p class="hint">Anything the team should know: call times, parking, who has the keys.</p>
     </div>
+    {{if .User.IsAdmin}}
+    <fieldset class="fieldset">
+      <legend>Who can see it</legend>
+      <div class="segmented">
+        <label><input type="radio" name="access" value="open" {{if not .Form.Locked}}checked{{end}}> Everyone signed in</label>
+        <label><input type="radio" name="access" value="locked" {{if .Form.Locked}}checked{{end}}> Only these people</label>
+      </div>
+      <div class="member-list" data-reveal-target="section" data-reveal-when="access=locked">
+        {{range .Users}}
+          {{if not .IsAdmin}}<label class="check"><input type="checkbox" name="member" value="{{.ID}}" {{if index $.IsMember .ID}}checked{{end}}> {{.Name}}</label>{{end}}
+        {{end}}
+        <p class="hint">Nobody else will see it or be able to change it. Admins always see every production.</p>
+      </div>
+    </fieldset>
+    {{else if .Form.Locked}}
+    <p class="hint">Locked: only the people an admin picked can see it.</p>
+    {{end}}
     <div class="form__actions">
       <button type="submit" class="btn btn--primary">{{if .Form.ID}}Save{{else}}Add production{{end}}</button>
       <a class="btn btn--ghost" href="{{if .Form.ID}}/productions/{{.Form.ID}}{{else}}/productions{{end}}">Cancel</a>

@@ -199,6 +199,16 @@ func (s *Store) nextPosition(table string, productionID int64) (int, error) {
 // movable lists the tables whose rows can be moved up and down.
 var movable = map[string]bool{"scenes": true, "cast_members": true, "mics": true}
 
+// ProductionOf is the production a movable row belongs to.
+func (s *Store) ProductionOf(table string, id int64) (int64, error) {
+	if !movable[table] {
+		return 0, fmt.Errorf("can't move rows of %s", table)
+	}
+	var prod int64
+	err := s.DB.QueryRow(`SELECT production_id FROM `+table+` WHERE id = ?`, id).Scan(&prod)
+	return prod, notFound(err)
+}
+
 // Move swaps a row with its neighbour above (up) or below in its
 // production's list. At either end it does nothing.
 func (s *Store) Move(table string, id int64, up bool) error {

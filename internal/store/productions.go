@@ -26,18 +26,20 @@ type Production struct {
 	Director    string
 	Description string
 	Notes       string
-	CreatedAt   string
-	UpdatedAt   string
+	// Locked productions are only for their members (and admins).
+	Locked    bool
+	CreatedAt string
+	UpdatedAt string
 }
 
 // Active reports whether the production is still being worked on.
 func (p Production) Active() bool { return p.Status != "done" && p.Status != "cancelled" }
 
-const productionCols = `id, title, kind, status, venue, director, description, notes, created_at, updated_at`
+const productionCols = `id, title, kind, status, venue, director, description, notes, locked, created_at, updated_at`
 
 func scanProduction(sc interface{ Scan(...any) error }) (Production, error) {
 	var p Production
-	err := sc.Scan(&p.ID, &p.Title, &p.Kind, &p.Status, &p.Venue, &p.Director, &p.Description, &p.Notes, &p.CreatedAt, &p.UpdatedAt)
+	err := sc.Scan(&p.ID, &p.Title, &p.Kind, &p.Status, &p.Venue, &p.Director, &p.Description, &p.Notes, &p.Locked, &p.CreatedAt, &p.UpdatedAt)
 	return p, err
 }
 
@@ -53,8 +55,8 @@ func (s *Store) CreateProduction(p *Production) (int64, error) {
 	if p.Status == "" {
 		p.Status = "planning"
 	}
-	res, err := s.DB.Exec(`INSERT INTO productions (title, kind, status, venue, director, description, notes) VALUES (?, ?, ?, ?, ?, ?, ?)`,
-		p.Title, p.Kind, p.Status, p.Venue, p.Director, p.Description, p.Notes)
+	res, err := s.DB.Exec(`INSERT INTO productions (title, kind, status, venue, director, description, notes, locked) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+		p.Title, p.Kind, p.Status, p.Venue, p.Director, p.Description, p.Notes, p.Locked)
 	if err != nil {
 		return 0, err
 	}
@@ -63,14 +65,73 @@ func (s *Store) CreateProduction(p *Production) (int64, error) {
 
 func (s *Store) UpdateProduction(p *Production) error {
 	_, err := s.DB.Exec(`UPDATE productions SET title = ?, kind = ?, status = ?, venue = ?, director = ?, description = ?, notes = ?,
-		updated_at = datetime('now') WHERE id = ?`,
-		p.Title, p.Kind, p.Status, p.Venue, p.Director, p.Description, p.Notes, p.ID)
+		locked = ?, updated_at = datetime('now') WHERE id = ?`,
+		p.Title, p.Kind, p.Status, p.Venue, p.Director, p.Description, p.Notes, p.Locked, p.ID)
 	return err
 }
 
 func (s *Store) DeleteProduction(id int64) error {
 	_, err := s.DB.Exec(`DELETE FROM productions WHERE id = ?`, id)
 	return err
+}
+
+// Who can see a production -------------------------------------------------
+
+// visibleTo is a condition on productions p that's true for the ones u can
+// see: all of them for an admin, otherwise the unlocked ones and the
+// locked ones u is a member of.
+func visibleTo(u *User) (string, []any) {
+	if u.IsAdmin {
+		return `1`, nil
+	}
+	return `(NOT p.locked OR EXISTS (SELECT 1 FROM production_members m WHERE m.production_id = p.id AND m.user_id = ?))`, []any{u.ID}
+}
+
+// CanSee reports whether u may see and work on p.
+func (s *Store) CanSee(p *Production, u *User) (bool, error) {
+	if !p.Locked || u.IsAdmin {
+		return true, nil
+	}
+	var n int
+	err := s.DB.QueryRow(`SELECT COUNT(*) FROM production_members WHERE production_id = ? AND user_id = ?`, p.ID, u.ID).Scan(&n)
+	return n > 0, err
+}
+
+// Members lists the IDs of the users on a production's member list.
+func (s *Store) Members(productionID int64) ([]int64, error) {
+	rows, err := s.DB.Query(`SELECT user_id FROM production_members WHERE production_id = ? ORDER BY user_id`, productionID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []int64
+	for rows.Next() {
+		var id int64
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		out = append(out, id)
+	}
+	return out, rows.Err()
+}
+
+// SetMembers replaces a production's member list.
+func (s *Store) SetMembers(productionID int64, userIDs []int64) error {
+	tx, err := s.DB.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	if _, err := tx.Exec(`DELETE FROM production_members WHERE production_id = ?`, productionID); err != nil {
+		return err
+	}
+	for _, id := range userIDs {
+		// Skips IDs that aren't users (anymore) rather than failing.
+		if _, err := tx.Exec(`INSERT OR IGNORE INTO production_members (production_id, user_id) SELECT ?, id FROM users WHERE id = ?`, productionID, id); err != nil {
+			return err
+		}
+	}
+	return tx.Commit()
 }
 
 // ProductionSummary is a production with what the dashboard shows about it.
@@ -97,14 +158,15 @@ func (t Tally) Percent() int {
 	return t.Done * 100 / t.Total
 }
 
-// ListProductions returns productions with their summaries: active ones
-// first by their next date, then the rest newest first.
-func (s *Store) ListProductions(activeOnly bool, today string) ([]ProductionSummary, error) {
-	q := `SELECT ` + productionCols + ` FROM productions`
+// ListProductions returns the productions u can see with their summaries:
+// active ones first by their next date, then the rest newest first.
+func (s *Store) ListProductions(u *User, activeOnly bool, today string) ([]ProductionSummary, error) {
+	cond, args := visibleTo(u)
+	q := `SELECT ` + productionCols + ` FROM productions p WHERE ` + cond
 	if activeOnly {
-		q += ` WHERE status NOT IN ('done', 'cancelled')`
+		q += ` AND status NOT IN ('done', 'cancelled')`
 	}
-	rows, err := s.DB.Query(q + ` ORDER BY id DESC`)
+	rows, err := s.DB.Query(q+` ORDER BY id DESC`, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -244,16 +306,19 @@ func (s *Store) ListEvents(productionID int64) ([]Event, error) {
 	return out, rows.Err()
 }
 
-// UpcomingEvents lists dates from today on across active productions.
+// UpcomingEvents lists dates from today on across the active productions u
+// can see.
 type UpcomingEvent struct {
 	Event
 	ProductionTitle string
 }
 
-func (s *Store) UpcomingEvents(today string, limit int) ([]UpcomingEvent, error) {
+func (s *Store) UpcomingEvents(u *User, today string, limit int) ([]UpcomingEvent, error) {
+	cond, args := visibleTo(u)
 	rows, err := s.DB.Query(`SELECT e.id, e.production_id, e.kind, e.date, e.time, e.label, e.notes, p.title
 		FROM events e JOIN productions p ON p.id = e.production_id
-		WHERE e.date >= ? AND p.status NOT IN ('done', 'cancelled') ORDER BY e.date, e.time, e.id LIMIT ?`, today, limit)
+		WHERE e.date >= ? AND p.status NOT IN ('done', 'cancelled') AND `+cond+`
+		ORDER BY e.date, e.time, e.id LIMIT ?`, append(append([]any{today}, args...), limit)...)
 	if err != nil {
 		return nil, err
 	}

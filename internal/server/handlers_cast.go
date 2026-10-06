@@ -220,6 +220,14 @@ func (s *Server) handleSceneDelete(w http.ResponseWriter, r *http.Request) {
 // goes back to the page it was moved from.
 func (s *Server) handleMove(table string) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		prod, err := s.store.ProductionOf(table, pathID(r))
+		if err != nil {
+			s.serverError(w, r, err)
+			return
+		}
+		if _, ok := s.productionByID(w, r, prod); !ok {
+			return
+		}
 		if err := s.store.Move(table, pathID(r), r.PostFormValue("dir") == "up"); err != nil {
 			s.serverError(w, r, err)
 			return

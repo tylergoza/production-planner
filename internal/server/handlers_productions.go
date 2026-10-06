@@ -14,10 +14,22 @@ func (s *Server) production(w http.ResponseWriter, r *http.Request) (*store.Prod
 	return s.productionByID(w, r, pathID(r))
 }
 
+// productionByID loads a production for the signed-in user. A locked one
+// they aren't a member of is "not found", so its title doesn't leak. Every
+// page and form for a production or anything in it goes through here.
 func (s *Server) productionByID(w http.ResponseWriter, r *http.Request, id int64) (*store.Production, bool) {
 	p, err := s.store.GetProduction(id)
 	if err != nil {
 		s.serverError(w, r, err)
+		return nil, false
+	}
+	ok, err := s.store.CanSee(p, currentUser(r))
+	if err != nil {
+		s.serverError(w, r, err)
+		return nil, false
+	}
+	if !ok {
+		s.notFound(w, r)
 		return nil, false
 	}
 	return p, true
@@ -38,12 +50,12 @@ func prodURL(id int64, rest string) string { return "/productions/" + strconv.Fo
 // Dashboard --------------------------------------------------------------
 
 func (s *Server) handleDashboard(w http.ResponseWriter, r *http.Request) {
-	list, err := s.store.ListProductions(true, s.today())
+	list, err := s.store.ListProductions(currentUser(r), true, s.today())
 	if err != nil {
 		s.serverError(w, r, err)
 		return
 	}
-	upcoming, err := s.store.UpcomingEvents(s.today(), 10)
+	upcoming, err := s.store.UpcomingEvents(currentUser(r), s.today(), 10)
 	if err != nil {
 		s.serverError(w, r, err)
 		return
@@ -54,7 +66,7 @@ func (s *Server) handleDashboard(w http.ResponseWriter, r *http.Request) {
 // Productions ------------------------------------------------------------
 
 func (s *Server) handleProductions(w http.ResponseWriter, r *http.Request) {
-	list, err := s.store.ListProductions(false, s.today())
+	list, err := s.store.ListProductions(currentUser(r), false, s.today())
 	if err != nil {
 		s.serverError(w, r, err)
 		return
@@ -62,24 +74,48 @@ func (s *Server) handleProductions(w http.ResponseWriter, r *http.Request) {
 	s.render(w, r, http.StatusOK, "productions/index", map[string]any{"Title": "Productions", "Productions": list})
 }
 
-func (s *Server) productionForm(w http.ResponseWriter, r *http.Request, status int, p store.Production, errs []string) {
+func (s *Server) productionForm(w http.ResponseWriter, r *http.Request, status int, p store.Production, members []int64, errs []string) {
 	title := "New production"
 	if p.ID != 0 {
 		title = "Edit " + p.Title
 	}
-	s.render(w, r, status, "productions/form", map[string]any{
-		"Title": title, "Form": p, "Errors": errs, "Statuses": store.ProductionStatuses,
-	})
+	data := map[string]any{"Title": title, "Form": p, "Errors": errs, "Statuses": store.ProductionStatuses}
+	// Only admins see who's on it and can change that.
+	if currentUser(r).IsAdmin {
+		users, err := s.store.ListUsers()
+		if err != nil {
+			s.serverError(w, r, err)
+			return
+		}
+		isMember := map[int64]bool{}
+		for _, id := range members {
+			isMember[id] = true
+		}
+		data["Users"], data["IsMember"] = users, isMember
+	}
+	s.render(w, r, status, "productions/form", data)
 }
 
 func (s *Server) handleProductionNew(w http.ResponseWriter, r *http.Request) {
-	s.productionForm(w, r, http.StatusOK, store.Production{Status: "planning"}, nil)
+	s.productionForm(w, r, http.StatusOK, store.Production{Status: "planning"}, nil, nil)
 }
 
-func readProduction(r *http.Request, p *store.Production) []string {
+// readProduction reads the form into p and returns who's on its member
+// list. Only admins lock productions and pick who's on them; for anyone
+// else p keeps the access it had and the list comes back nil.
+func readProduction(r *http.Request, p *store.Production) ([]int64, []string) {
 	p.Title, p.Kind, p.Status = formStr(r, "title"), formStr(r, "kind"), formStr(r, "status")
 	p.Venue, p.Director = formStr(r, "venue"), formStr(r, "director")
 	p.Description, p.Notes = formStr(r, "description"), formStr(r, "notes")
+	var members []int64
+	if currentUser(r).IsAdmin {
+		p.Locked = formStr(r, "access") == "locked"
+		for _, v := range r.PostForm["member"] {
+			if id, err := strconv.ParseInt(v, 10, 64); err == nil {
+				members = append(members, id)
+			}
+		}
+	}
 	var errs []string
 	if p.Title == "" {
 		errs = append(errs, "Give the production a title.")
@@ -87,19 +123,26 @@ func readProduction(r *http.Request, p *store.Production) []string {
 	if !slices.Contains(store.ProductionStatuses, p.Status) {
 		errs = append(errs, "Pick a status.")
 	}
-	return errs
+	return members, errs
 }
 
 func (s *Server) handleProductionCreate(w http.ResponseWriter, r *http.Request) {
 	var p store.Production
-	if errs := readProduction(r, &p); errs != nil {
-		s.productionForm(w, r, http.StatusUnprocessableEntity, p, errs)
+	members, errs := readProduction(r, &p)
+	if errs != nil {
+		s.productionForm(w, r, http.StatusUnprocessableEntity, p, members, errs)
 		return
 	}
 	id, err := s.store.CreateProduction(&p)
 	if err != nil {
 		s.serverError(w, r, err)
 		return
+	}
+	if p.Locked && currentUser(r).IsAdmin {
+		if err := s.store.SetMembers(id, members); err != nil {
+			s.serverError(w, r, err)
+			return
+		}
 	}
 	s.redirect(w, r, prodURL(id, "/schedule"), p.Title+" added. Next, add its dates.")
 }
@@ -163,7 +206,15 @@ func (s *Server) handleProductionEdit(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	s.productionForm(w, r, http.StatusOK, *p, nil)
+	var members []int64
+	if currentUser(r).IsAdmin {
+		var err error
+		if members, err = s.store.Members(p.ID); err != nil {
+			s.serverError(w, r, err)
+			return
+		}
+	}
+	s.productionForm(w, r, http.StatusOK, *p, members, nil)
 }
 
 func (s *Server) handleProductionUpdate(w http.ResponseWriter, r *http.Request) {
@@ -171,13 +222,21 @@ func (s *Server) handleProductionUpdate(w http.ResponseWriter, r *http.Request) 
 	if !ok {
 		return
 	}
-	if errs := readProduction(r, p); errs != nil {
-		s.productionForm(w, r, http.StatusUnprocessableEntity, *p, errs)
+	members, errs := readProduction(r, p)
+	if errs != nil {
+		s.productionForm(w, r, http.StatusUnprocessableEntity, *p, members, errs)
 		return
 	}
 	if err := s.store.UpdateProduction(p); err != nil {
 		s.serverError(w, r, err)
 		return
+	}
+	// Unlocking keeps the list, for if it's locked again.
+	if p.Locked && currentUser(r).IsAdmin {
+		if err := s.store.SetMembers(p.ID, members); err != nil {
+			s.serverError(w, r, err)
+			return
+		}
 	}
 	s.redirect(w, r, prodURL(p.ID, ""), "Saved.")
 }

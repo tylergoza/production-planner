@@ -32,6 +32,7 @@
 {{/* Progress bar. Pass a store.Tally. */}}
 {{define "progress"}}<progress class="progress{{if and .Total (eq .Done .Total)}} progress--done{{end}}" max="{{if .Total}}{{.Total}}{{else}}1{{end}}" value="{{.Done}}">{{.Percent}}%</progress>{{end}}
 
+{{define "locked-badge"}}<span class="badge badge--locked" title="Only its members can see it">Locked</span>{{end}}
 {{define "production-badge"}}<span class="badge badge--prod-{{.}}">{{productionStatusLabel .}}</span>{{end}}
 {{define "prep-badge"}}<span class="badge badge--prep-{{.}}">{{prepStatusLabel .}}</span>{{end}}
 {{define "need-badge"}}<span class="badge badge--need-{{.}}">{{needStatusLabel .}}</span>{{end}}
@@ -43,7 +44,7 @@
   <nav class="crumbs" aria-label="Breadcrumb"><a href="/productions">Productions</a></nav>
   <div class="page-head prod-head">
     <div>
-      <h1>{{$p.Title}} {{template "production-badge" $p.Status}}</h1>
+      <h1>{{$p.Title}} {{template "production-badge" $p.Status}}{{if $p.Locked}} {{template "locked-badge"}}{{end}}</h1>
       <p class="muted">{{with $p.Kind}}{{.}}{{end}}{{if and $p.Kind $p.Venue}} · {{end}}{{with $p.Venue}}{{.}}{{end}}{{with $p.Director}} · Directed by {{.}}{{end}}</p>
     </div>
     <div class="page-head__actions">

@@ -42,7 +42,7 @@
   <a class="card card--link prod-card" href="/productions/{{.ID}}">
     <div class="prod-card__head">
       <h2 class="card__title">{{.Title}}</h2>
-      {{template "production-badge" .Status}}
+      {{template "production-badge" .Status}}{{if .Locked}} {{template "locked-badge"}}{{end}}
     </div>
     {{with .Kind}}<p class="muted small">{{.}}</p>{{end}}
     {{with .NextEvent}}

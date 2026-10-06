@@ -11,7 +11,7 @@
       {{range .Productions}}
         <tr>
           <td data-label="Production"><div><a href="/productions/{{.ID}}"><strong>{{.Title}}</strong></a>{{with .Kind}}<br><span class="muted small">{{.}}</span>{{end}}</div></td>
-          <td data-label="Status">{{template "production-badge" .Status}}</td>
+          <td data-label="Status">{{template "production-badge" .Status}}{{if .Locked}} {{template "locked-badge"}}{{end}}</td>
           <td data-label="Dates"><div class="small">{{if .FirstDate}}{{fmtDate .FirstDate}}{{if ne .FirstDate .LastDate}} – {{fmtDate .LastDate}}{{end}}{{else}}<span class="muted">None yet</span>{{end}}</div></td>
           <td data-label="Ready"><div class="small">{{.Prep.Done}} / {{.Prep.Total}}</div></td>
           <td data-label="Needs"><div class="small">{{.Needs.Done}} / {{.Needs.Total}}</div></td>

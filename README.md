@@ -41,6 +41,7 @@ port 8090, so the maintenance tracker (8080) can run alongside it.
 | Needs | Search the maintenance tracker's products and supplies and add how many you need. Each one shows how many the tracker has (on hand for supplies, with low/out flags) and **short by** when there aren't enough. Anything else is something to buy or borrow. Mark things Gathered, then Put back after the production. |
 | Offline | Installable as an app. The dashboard, a production's overview and its mic chart open from the last copy when there's no signal backstage. |
 | Users | Admins manage users and settings and can download a backup. Everything needs sign-in: cast lists aren't public. |
+| Access | A production is open to everyone signed in, or locked by an admin to a list of people (under **Edit details**). Others don't see a locked production at all; admins see every production. |
 
 ## The maintenance tracker
 

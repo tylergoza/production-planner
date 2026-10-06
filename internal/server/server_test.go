@@ -357,3 +357,72 @@ func TestLiveEvents(t *testing.T) {
 }
 
 func itoa(n int64) string { return strconv.FormatInt(n, 10) }
+
+// as signs in as someone else in a browser of their own.
+func (c *client) as(username string) *client {
+	jar, _ := cookiejar.New(nil)
+	other := &client{t: c.t, base: c.base, http: &http.Client{Jar: jar}}
+	other.post("/login", "/login", url.Values{"username": {username}, "password": {"a long password"}}, 200)
+	return other
+}
+
+func TestLockedProductions(t *testing.T) {
+	c, st := newTestServer(t)
+	st.CreateUser("boss", "", "a long password", true)
+	annID, _ := st.CreateUser("ann", "", "a long password", false)
+	bobID, _ := st.CreateUser("bob", "", "a long password", false)
+	ann, bob, boss := c.as("ann"), c.as("bob"), c.as("boss")
+
+	// Only admins lock: Ann asking for it gets an open production.
+	ann.post("/productions/new", "/productions", url.Values{"title": {"Open Concert"}, "status": {"planning"}, "access": {"locked"}}, 200)
+	if p, _ := st.GetProduction(1); p.Locked {
+		t.Fatal("a non-admin shouldn't be able to lock a production")
+	}
+	if strings.Contains(ann.get("/productions/1/edit", 200), "Who can see it") {
+		t.Error("non-admins shouldn't get the access controls")
+	}
+
+	boss.post("/productions/new", "/productions", url.Values{"title": {"Youth Play"}, "status": {"planning"}, "access": {"locked"}, "member": {itoa(annID), "999"}}, 200)
+	ann.post("/productions/2/schedule", "/productions/2/events", url.Values{"kind": {"rehearsal"}, "date": {"2099-01-01"}}, 200)
+	ann.post("/productions/2/cast", "/productions/2/cast", url.Values{"character": {"Mary"}}, 200)
+	if m, _ := st.Members(2); len(m) != 1 || m[0] != annID {
+		t.Fatalf("members %v, want just ann", m)
+	}
+
+	// Bob doesn't see it anywhere, and can't reach it or anything in it.
+	for _, p := range []string{"/", "/productions"} {
+		body := bob.get(p, 200)
+		if strings.Contains(body, "Youth Play") || !strings.Contains(body, "Open Concert") {
+			t.Errorf("%s: bob should see only the open production", p)
+		}
+	}
+	for _, p := range []string{"/productions/2", "/productions/2/edit", "/productions/2/mics", "/events/1/edit", "/cast/1/edit"} {
+		bob.get(p, 404)
+	}
+	bob.post("/productions", "/productions/2/events", url.Values{"kind": {"rehearsal"}, "date": {"2099-01-02"}}, 404)
+	bob.post("/productions", "/cast/1/move", url.Values{"dir": {"up"}}, 404)
+	bob.post("/productions", "/productions/2/delete", url.Values{}, 404)
+
+	// A member saving the details can't open it up or change who's on it.
+	ann.post("/productions/2/edit", "/productions/2", url.Values{"title": {"Youth Play"}, "status": {"planning"}, "access": {"open"}, "member": {itoa(bobID)}}, 200)
+	if p, _ := st.GetProduction(2); !p.Locked {
+		t.Fatal("a non-admin shouldn't be able to unlock a production")
+	}
+	if m, _ := st.Members(2); len(m) != 1 || m[0] != annID {
+		t.Fatalf("members %v, want just ann", m)
+	}
+
+	// Admins see everything, add Bob, then open it up, which keeps the list.
+	if body := boss.get("/productions/2", 200); !strings.Contains(body, "Locked") {
+		t.Error("admin should see the locked production, marked locked")
+	}
+	boss.post("/productions/2/edit", "/productions/2", url.Values{"title": {"Youth Play"}, "status": {"planning"}, "access": {"locked"}, "member": {itoa(annID), itoa(bobID)}}, 200)
+	bob.get("/productions/2", 200)
+	boss.post("/productions/2/edit", "/productions/2", url.Values{"title": {"Youth Play"}, "status": {"planning"}, "access": {"open"}}, 200)
+	if m, _ := st.Members(2); len(m) != 2 {
+		t.Errorf("members %v, want ann and bob kept", m)
+	}
+	if body := bob.get("/productions", 200); !strings.Contains(body, "Youth Play") {
+		t.Error("an open production is for everyone")
+	}
+}

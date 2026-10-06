@@ -67,8 +67,22 @@
         <button type="button" class="flash__close" data-action="flash#dismiss" aria-label="Dismiss">×</button>
       </div>
     {{end}}
-    {{if .P}}{{template "prod-head" .}}{{end}}
-    {{template "content" .}}
+    {{if .Live}}
+      {{/* Kept current by live_controller.js while the page is open. */}}
+      <div data-controller="live">
+        <p class="live-notice" hidden role="status" data-live-target="notice">
+          Someone else has made changes.
+          <button type="button" class="btn btn--sm" data-action="live#apply">Show them</button>
+        </p>
+        <div data-live-target="region">
+          {{if .P}}{{template "prod-head" .}}{{end}}
+          {{template "content" .}}
+        </div>
+      </div>
+    {{else}}
+      {{if .P}}{{template "prod-head" .}}{{end}}
+      {{template "content" .}}
+    {{end}}
   </main>
 
   <footer class="footer container">

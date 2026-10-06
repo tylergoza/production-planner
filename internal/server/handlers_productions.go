@@ -48,7 +48,7 @@ func (s *Server) handleDashboard(w http.ResponseWriter, r *http.Request) {
 		s.serverError(w, r, err)
 		return
 	}
-	s.render(w, r, http.StatusOK, "dashboard", map[string]any{"Productions": list, "Upcoming": upcoming})
+	s.render(w, r, http.StatusOK, "dashboard", map[string]any{"Productions": list, "Upcoming": upcoming, "Live": true})
 }
 
 // Productions ------------------------------------------------------------
@@ -154,7 +154,7 @@ func (s *Server) handleProductionShow(w http.ResponseWriter, r *http.Request) {
 	}
 	s.prodPage(w, r, http.StatusOK, "productions/show", p, "overview", map[string]any{
 		"Sum": sum, "Upcoming": upcoming, "Departments": store.GroupPrep(prep), "Attention": attention,
-		"StillNeeded": stillNeeded, "Chart": chart,
+		"StillNeeded": stillNeeded, "Chart": chart, "Live": true,
 	})
 }
 
@@ -217,6 +217,7 @@ func (s *Server) handleSchedule(w http.ResponseWriter, r *http.Request) {
 		s.serverError(w, r, err)
 		return
 	}
+	data["Live"] = true
 	s.prodPage(w, r, http.StatusOK, "productions/schedule", p, "schedule", data)
 }
 

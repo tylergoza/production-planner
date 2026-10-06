@@ -59,7 +59,7 @@ func (s *Server) handlePrep(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	s.renderPrep(w, r, http.StatusOK, p, map[string]any{})
+	s.renderPrep(w, r, http.StatusOK, p, map[string]any{"Live": true})
 }
 
 func (s *Server) readPrep(r *http.Request, it *store.PrepItem) []string {
@@ -308,7 +308,7 @@ func (s *Server) handleNeeds(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	s.renderNeeds(w, r, http.StatusOK, p, map[string]any{})
+	s.renderNeeds(w, r, http.StatusOK, p, map[string]any{"Live": true})
 }
 
 func readNeed(r *http.Request, n *store.Need) []string {

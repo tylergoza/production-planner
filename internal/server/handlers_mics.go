@@ -41,7 +41,7 @@ func (s *Server) handleMicChart(w http.ResponseWriter, r *http.Request) {
 	}
 	s.prodPage(w, r, http.StatusOK, "mics/chart", p, "mics", map[string]any{
 		"Title": "Mic chart · " + p.Title, "Grid": store.BuildGrid(cur, base), "Chart": status, "Versions": versions,
-		"CastCount": len(cast),
+		"CastCount": len(cast), "Live": true,
 	})
 }
 

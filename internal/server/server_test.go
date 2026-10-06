@@ -1,6 +1,7 @@
 package server
 
 import (
+	"bufio"
 	"io"
 	"log/slog"
 	"net/http"
@@ -12,6 +13,7 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/tylergoza/production-planner/internal/store"
 )
@@ -281,6 +283,77 @@ func TestSignInRequired(t *testing.T) {
 			t.Errorf("%s should ask to sign in", p)
 		}
 	}
+}
+
+func TestLiveEvents(t *testing.T) {
+	c, st := newTestServer(t)
+	st.CreateUser("director", "", "a long password", true)
+
+	// The stream is for signed-in people only.
+	if body := c.get("/live", 200); !strings.Contains(body, "Sign in to plan") {
+		t.Fatal("/live should ask to sign in")
+	}
+	c.post("/login", "/login", url.Values{"username": {"director"}, "password": {"a long password"}}, 200)
+
+	resp, err := c.http.Get(c.base + "/live")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	if ct := resp.Header.Get("Content-Type"); ct != "text/event-stream" {
+		t.Fatalf("content type %q", ct)
+	}
+	lines := make(chan string)
+	go func() {
+		sc := bufio.NewScanner(resp.Body)
+		for sc.Scan() {
+			if strings.HasPrefix(sc.Text(), "data:") {
+				lines <- sc.Text()
+			}
+		}
+	}()
+	next := func(wait time.Duration) string {
+		select {
+		case l := <-lines:
+			return l
+		case <-time.After(wait):
+			return ""
+		}
+	}
+	if l := next(2 * time.Second); l != "data: ping" {
+		t.Fatalf("first message %q, want a ping", l)
+	}
+
+	// Signing in changes nothing anyone else sees.
+	c.post("/login", "/login", url.Values{"username": {"director"}, "password": {"a long password"}}, 200)
+	if l := next(200 * time.Millisecond); l != "" {
+		t.Fatalf("signing in sent %q", l)
+	}
+	// A failed save doesn't either.
+	c.post("/productions/new", "/productions", url.Values{"title": {""}, "status": {"planning"}}, 422)
+	if l := next(200 * time.Millisecond); l != "" {
+		t.Fatalf("a rejected save sent %q", l)
+	}
+	c.post("/productions/new", "/productions", url.Values{"title": {"Easter Play"}, "status": {"planning"}}, 200)
+	if l := next(2 * time.Second); l != "data: change" {
+		t.Fatalf("after a save got %q, want a change", l)
+	}
+
+	for _, p := range []string{"/", "/productions/1", "/productions/1/schedule", "/productions/1/mics", "/productions/1/prep", "/productions/1/needs"} {
+		if !strings.Contains(c.get(p, 200), `data-controller="live"`) {
+			t.Errorf("%s should update live", p)
+		}
+	}
+	for _, p := range []string{"/productions", "/productions/1/cast", "/productions/1/edit"} {
+		if strings.Contains(c.get(p, 200), `data-controller="live"`) {
+			t.Errorf("%s shouldn't update live", p)
+		}
+	}
+	// A form sent back with errors would lose what was typed on a refresh.
+	if body := c.post("/productions/1/prep", "/productions/1/prep", url.Values{"name": {""}}, 422); strings.Contains(body, `data-controller="live"`) {
+		t.Error("a form with errors shouldn't update live")
+	}
+	c.get("/static/js/controllers/live_controller.js", 200)
 }
 
 func itoa(n int64) string { return strconv.FormatInt(n, 10) }

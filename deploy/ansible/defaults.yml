@@ -8,7 +8,11 @@ do_token: "{{ lookup('env', 'DIGITALOCEAN_TOKEN') }}"
 # Droplet. `doctl compute size list` / `region list` / `image list-distribution`
 # show the choices. nyc3 is New York 3; s-1vcpu-1gb is the $6/month Basic
 # droplet, which is plenty for this app.
-droplet_name: production-planner
+# By default the planner shares the maintenance tracker's droplet: it finds
+# it by the tracker's tag and adds itself alongside (port 8090, its own
+# service user, data folder and Caddy site). For a droplet of its own, set
+# droplet_name and do_tag to production-planner.
+droplet_name: maintenance-tracker
 do_region: nyc3
 do_size: s-1vcpu-1gb
 do_image: ubuntu-26-04-x64
@@ -20,7 +24,7 @@ do_monitoring: true
 # the account's default project.
 do_project: ""
 # Droplets, firewall and deploys all find each other by this tag.
-do_tag: production-planner
+do_tag: maintenance-tracker
 # More tags for the droplet, e.g. ones your own cloud firewalls target.
 # Added to existing droplets too on the next provision.
 do_extra_tags: []

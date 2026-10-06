@@ -89,11 +89,25 @@ hand. Follow the comments at the top of `deploy/production-planner.service`.
 
 ### DigitalOcean with Ansible
 
-`deploy/ansible/` works exactly like the maintenance tracker's: provision
-creates a droplet (tagged `production-planner`), firewall and DNS record,
-then installs updates, Caddy and the service user. Deploy runs the tests,
-builds the Linux binary here, backs up the database when the binary changes
-(keeping 10), installs, and checks `/healthz`.
+`deploy/ansible/` works like the maintenance tracker's, and by default puts
+the planner **on the tracker's droplet**: it finds it by the tracker's tag
+(`maintenance-tracker`) and adds itself alongside, on port 8090 with its own
+service user (`planner`), data folder and Caddy site. Provision adds the DNS
+record for the planner's domain (pointing at the same droplet) and the
+service user; with no tagged droplet it would create one. Deploy runs the
+tests, builds the Linux binary here, backs up the database when the binary
+changes (keeping 10), installs, and checks `/healthz`.
+
+Caddy's config is split so both apps can deploy without overwriting each
+other: `/etc/caddy/Caddyfile` only imports `/etc/caddy/sites/*.caddy`, and
+each app writes its own site there (`production-planner.caddy`,
+`maintenance-tracker.caddy`). Both repos write the same main Caddyfile. If
+the droplet still has the Caddyfile from an older tracker deploy, the
+planner's deploy stops and asks you to deploy the updated tracker first,
+rather than taking the tracker offline.
+
+For a droplet of its own instead, set `droplet_name` and `do_tag` to
+`production-planner` in `vars.yml`.
 
 ```sh
 cp deploy/ansible/vars.example.yml deploy/ansible/vars.yml   # set app_domain, dns_zone, tracker_url
@@ -107,10 +121,6 @@ On the first deploy the admin user is created before the app starts, so
 `/setup` is never exposed. Set `PP_ADMIN_PASSWORD` to choose its password, or
 a random one is printed at the end.
 
-It's a second droplet ($6/month) rather than sharing the tracker's, because
-each app's deploy writes the whole `/etc/caddy/Caddyfile`. Sharing one would
-mean switching both to Caddy `import` snippets.
-
 With a hardware SSH key, use a deploy key as described in the tracker's
 README (`ssh_private_key_file` in `vars.yml`; the same key works for both).
 
@@ -119,6 +129,7 @@ README (`ssh_private_key_file` in `vars.yml`; the same key works for both).
 **Settings → Download backup** (or the `backup` command), stop the app on the
 new host, copy the file to its database path
 (`/var/lib/production-planner/productions.db`, owned by `planner`), and start it.
+Droplet backups cover both apps when they share a droplet.
 
 ## Layout
 

@@ -16,7 +16,10 @@ do_project: My Project
 do_region: nyc3
 do_size: s-1vcpu-1gb
 do_image: ubuntu-26-04-x64
-droplet_name: production-planner
+# Share the maintenance tracker's droplet (the default), or set both of
+# these to production-planner for a droplet of its own.
+droplet_name: maintenance-tracker
+# do_tag: maintenance-tracker
 
 # Extra droplet tags, e.g. ones your own cloud firewalls target. If those
 # firewalls already allow SSH/HTTP/HTTPS, also turn off the play's own.

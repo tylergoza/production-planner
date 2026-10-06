@@ -15,6 +15,9 @@ the tracker should get the same change.
 - CSP is `style-src 'self'`: no inline `style=` attributes in templates.
 - Each page template is parsed with only `layout.html` + `partials/*.html`,
   so anything shared between pages goes in a partial.
-- Deploys to its own droplet (tag `production-planner`); `deploy/ansible/vars.yml`
-  is gitignored and holds the real domain.
+- Deploys onto the maintenance tracker's droplet (found by tag
+  `maintenance-tracker`). Caddy is split: `/etc/caddy/Caddyfile` only does
+  `import /etc/caddy/sites/*.caddy`, and each app writes its own site file.
+  The main Caddyfile text must stay identical in both repos' deploy.yml.
+  `deploy/ansible/vars.yml` is gitignored and holds the real domain.
 - The user runs all `git commit`s themselves (YubiKey signing). Don't commit.

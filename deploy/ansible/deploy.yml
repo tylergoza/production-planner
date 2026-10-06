@@ -1,5 +1,5 @@
 # Tests and builds the Linux binary on this machine, then installs it, the
-# systemd unit and the Caddyfile on every droplet tagged do_tag. The database
+# systemd unit and its Caddy site on every droplet tagged do_tag. The database
 # is backed up first whenever the binary changes (migrations run on start).
 #
 #   export DIGITALOCEAN_TOKEN=...
@@ -120,9 +120,51 @@
       no_log: true
       notify: Restart the app
 
-    - name: Install the Caddyfile
+    # The droplet can be shared with the maintenance tracker: each app puts
+    # its own site in /etc/caddy/sites/ and the main Caddyfile (the same in
+    # both repos) imports them all.
+    - name: Read the current Caddyfile
+      ansible.builtin.slurp:
+        src: /etc/caddy/Caddyfile
+      register: caddyfile
+      failed_when: false
+
+    # An older tracker deploy wrote the whole Caddyfile with its site in it.
+    # Replacing that would take the tracker offline, so stop instead.
+    - name: Check the Caddyfile can be replaced
+      vars:
+        current: "{{ (caddyfile.content | default('') | b64decode) }}"
+      ansible.builtin.assert:
+        that: >-
+          'import /etc/caddy/sites/*.caddy' in current
+          or 'Managed by deploy/ansible' not in current
+        fail_msg: >-
+          /etc/caddy/Caddyfile was written by an older maintenance tracker deploy.
+          Deploy the updated maintenance tracker first (it moves its site into
+          /etc/caddy/sites/), then run this again.
+        quiet: true
+
+    - name: Create the Caddy sites folder
+      ansible.builtin.file:
+        path: /etc/caddy/sites
+        state: directory
+        mode: "0755"
+
+    # Before the main file, so its import never finds an empty folder.
+    - name: Install this app's Caddy site
       ansible.builtin.template:
         src: Caddyfile.j2
+        dest: /etc/caddy/sites/production-planner.caddy
+        mode: "0644"
+        validate: caddy validate --adapter caddyfile --config %s
+      notify: Reload Caddy
+
+    - name: Install the main Caddyfile
+      ansible.builtin.copy:
+        content: |
+          # Managed by deploy/ansible in each app's repo; edits here are overwritten.
+          # Each app puts its own site in /etc/caddy/sites/.
+          import /etc/caddy/sites/*.caddy
         dest: /etc/caddy/Caddyfile
         mode: "0644"
         validate: caddy validate --adapter caddyfile --config %s

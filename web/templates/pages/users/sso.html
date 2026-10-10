@@ -1,0 +1,69 @@
+{{define "content"}}
+<div class="page-head">
+  <div>
+    <h1>Users</h1>
+    <p class="muted">Everyone with access to this app, from User Management. Administrators can also manage users and settings.</p>
+  </div>
+  {{if .UserAdmin}}<a class="btn btn--ghost" href="{{.ManageURL}}">Manage in User Management</a>{{end}}
+</div>
+{{if not .UserAdmin}}<p class="hint">Need someone added, renamed or given a new password? Ask a user admin to do it in User Management.</p>{{end}}
+{{if .LoadError}}
+  <div class="alert alert--error" role="alert">{{.LoadError}}</div>
+{{else}}
+{{if .ReadOnly}}
+  <div class="alert alert--error" role="status">You signed in with the local login, so this list is read-only. To change people's roles or access, sign out and sign in again through User Management.</div>
+{{end}}
+<div class="table-wrap">
+  <table class="table table--stack">
+    <thead><tr><th>Username</th><th>Name</th><th>Role</th><th>Access</th><th><span class="sr-only">Actions</span></th></tr></thead>
+    <tbody>
+      {{range .People}}
+        <tr>
+          <td data-label="Username"><strong>{{.Username}}</strong>{{if eq .Sub $.User.SSOSubject}} <span class="muted small">(you)</span>{{end}}</td>
+          <td data-label="Name">{{.Name}}</td>
+          <td data-label="Role">{{.Role}}</td>
+          <td data-label="Access">
+            {{if .Disabled}}<span class="badge badge--alert">Account turned off</span>
+            {{else if .Suspended}}<span class="badge badge--warn">Suspended</span>
+            {{else if .Active}}<span class="badge badge--prep-ready">Active</span>
+            {{else}}<span class="badge badge--warn">No access</span>{{end}}
+            {{if .Locked}}<span class="badge badge--locked" title="A user admin pinned this person's access">Locked</span>{{end}}
+            {{if .UpdatedBy}}<br><span class="muted small">Updated by {{.UpdatedBy}}{{with .UpdatedAt}} on {{fmtTime .}}{{end}}</span>{{end}}
+          </td>
+          <td class="actions">
+            {{if .Locked}}
+              <span class="muted small">Locked by a user admin in User Management</span>
+            {{else if .Disabled}}
+              <span class="muted small">Turned off in User Management</span>
+            {{else if not $.ReadOnly}}
+              <form method="post" action="/admin/access/{{.Sub}}" class="inline-form status-form">
+                {{template "csrf" $.CSRF}}
+                <label class="sr-only" for="role-{{.Sub}}">Role for {{.Username}}</label>
+                <select id="role-{{.Sub}}" name="role">
+                  {{$role := .Role}}{{range $.Roles}}<option value="{{.}}" {{if eq . $role}}selected{{end}}>{{.}}</option>{{end}}
+                </select>
+                <button type="submit" class="btn btn--ghost btn--sm">Save role</button>
+              </form>
+              {{if .Suspended}}
+                <form method="post" action="/admin/access/{{.Sub}}" class="inline-form">
+                  {{template "csrf" $.CSRF}}
+                  <button type="submit" name="suspended" value="0" class="btn btn--ghost btn--sm">Restore</button>
+                </form>
+              {{else}}
+                <form method="post" action="/admin/access/{{.Sub}}" class="inline-form"
+                      data-controller="confirm" data-confirm-message-value="Suspend {{.Username}}? They'll be signed out of this app straight away." data-action="submit->confirm#check">
+                  {{template "csrf" $.CSRF}}
+                  <button type="submit" name="suspended" value="1" class="btn btn--danger-ghost btn--sm">Suspend</button>
+                </form>
+              {{end}}
+            {{end}}
+          </td>
+        </tr>
+      {{else}}
+        <tr><td colspan="5" class="muted">Nobody has access to this app yet.</td></tr>
+      {{end}}
+    </tbody>
+  </table>
+</div>
+{{end}}
+{{end}}

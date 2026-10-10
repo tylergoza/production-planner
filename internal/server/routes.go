@@ -6,6 +6,8 @@ import (
 	"net/http"
 	"strings"
 	"time"
+
+	"github.com/tylergoza/production-planner/internal/store"
 )
 
 func (s *Server) routes() http.Handler {
@@ -33,6 +35,11 @@ func (s *Server) routes() http.Handler {
 	mux.HandleFunc("POST /logout", s.handleLogout)
 	mux.HandleFunc("GET /setup", s.handleSetupForm)
 	mux.HandleFunc("POST /setup", s.handleSetup)
+	mux.HandleFunc("GET /signed-out", s.handleSignedOut)
+	// Single sign-on (404 unless SSO_URL is set). /auth/start goes to User
+	// Management even while the break-glass local login is on.
+	mux.HandleFunc("GET /auth/start", s.handleSSOStart)
+	mux.HandleFunc("GET /auth/callback", s.handleSSOCallback)
 
 	// Signed-in editors. Cast names and the like aren't for the public.
 	auth := func(pattern string, h http.HandlerFunc) { mux.Handle(pattern, s.requireUser(h)) }
@@ -106,6 +113,7 @@ func (s *Server) routes() http.Handler {
 	admin("GET /admin/users/{id}/edit", s.handleUserEdit)
 	admin("POST /admin/users/{id}", s.handleUserUpdate)
 	admin("POST /admin/users/{id}/delete", s.handleUserDelete)
+	admin("POST /admin/access/{sub}", s.handleSSOAccessUpdate) // SSO only
 	admin("GET /admin/settings", s.handleSettings)
 	admin("POST /admin/settings", s.handleSettingsUpdate)
 	admin("GET /admin/backup", s.handleBackup)
@@ -171,9 +179,24 @@ func (s *Server) loadSession(next http.Handler) http.Handler {
 			return
 		}
 		if c, err := r.Cookie(sessionCookie); err == nil && c.Value != "" {
-			if sess, err := s.store.GetSession(c.Value); err == nil {
+			sess, err := s.store.GetSession(c.Value)
+			var user *store.User
+			switch {
+			case err != nil:
+			case r.URL.Path == "/live":
+				// The live update stream carries no data and can stay open
+				// for hours, so it goes on the stored session alone: opening
+				// it never waits on User Management, and the page refreshes
+				// it sets off check the grant instead.
+				user = &sess.User
+			default:
+				// SSO sessions are re-checked with User Management every
+				// few minutes; nil means that sign-in has ended.
+				user = s.checkGrant(sess)
+			}
+			if user != nil {
 				r = withValue(r, ctxSession, sess)
-				r = withValue(r, ctxUser, &sess.User)
+				r = withValue(r, ctxUser, user)
 			} else {
 				http.SetCookie(w, &http.Cookie{Name: sessionCookie, Path: "/", MaxAge: -1})
 			}
@@ -225,6 +248,15 @@ func (s *Server) csrf(next http.Handler) http.Handler {
 func (s *Server) requireUser(next http.HandlerFunc) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if currentUser(r) == nil {
+			// The live stream and a live page refreshing itself in the
+			// background get a plain 401: following a redirect to /login
+			// would start a sign-in and replace the pp_sso cookie of one
+			// the person may have under way in another tab.
+			if r.URL.Path == "/live" || r.Header.Get("X-Live-Refresh") != "" {
+				w.Header().Set("Cache-Control", "no-store")
+				w.WriteHeader(http.StatusUnauthorized)
+				return
+			}
 			dest := r.URL.RequestURI()
 			if r.Method != http.MethodGet {
 				dest = "/"

@@ -16,5 +16,8 @@
     </div>
     <button type="submit" class="btn btn--primary btn--block">Sign in</button>
   </form>
+  {{if .SSO}}
+  <p class="hint">Local sign-in is turned on for maintenance. You can also <a href="/auth/start?next={{.Next}}">sign in with your church account</a>.</p>
+  {{end}}
 </div>
 {{end}}

@@ -187,6 +187,27 @@ On the first deploy the admin user is created before the app starts, so
 `/setup` is never exposed. Set `PP_ADMIN_PASSWORD` to choose its password, or
 a random one is printed at the end.
 
+#### Turning on single sign-on
+
+SSO stays off until `sso_url` is set (see Single sign-on above). Once User
+Management is deployed on the same droplet and its import-users playbook has
+printed the planner's client secret:
+
+```sh
+# in deploy/ansible/vars.yml:
+#   sso_url: https://accounts.example.org
+#   base_url: https://productions.example.org   # sign-in returns to base_url/auth/callback
+export DIGITALOCEAN_TOKEN=...
+export UM_PLANNER_SECRET=...           # from User Management's import-users playbook
+make deploy
+```
+
+The deploy stops before building if `sso_url` is set without the secret or
+`base_url`, so keep `UM_PLANNER_SECRET` exported for every deploy while SSO
+is on. The secret goes only into the root-only systemd drop-in, with
+nothing logged. To turn SSO back off, remove `sso_url` and deploy again. If
+User Management is down, use the `local-login on` break-glass above instead.
+
 With a hardware SSH key, use a deploy key as described in the tracker's
 README (`ssh_private_key_file` in `vars.yml`; the same key works for both).
 

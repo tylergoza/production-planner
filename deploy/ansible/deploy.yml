@@ -16,6 +16,21 @@
   vars:
     repo_root: "{{ playbook_dir | dirname | dirname }}"
   tasks:
+    # Before building, so a half-set SSO never reaches the droplet (the app
+    # won't start with SSO_URL but no client secret).
+    - name: Check the single sign-on settings
+      ansible.builtin.assert:
+        that:
+          - sso_client_secret | length > 0
+          - base_url | length > 0
+        fail_msg: >-
+          sso_url is set, so SSO needs its client secret and base_url.
+          Run `export UM_PLANNER_SECRET=...` with the secret printed by User
+          Management's import-users playbook, and set base_url in vars.yml to
+          the planner's public https address. Or unset sso_url to keep SSO off.
+        quiet: true
+      when: sso_url | length > 0
+
     - name: Run the tests
       ansible.builtin.command:
         cmd: make test
@@ -103,8 +118,11 @@
 
     # The unit in the repo has a placeholder TZ; this overrides it. The
     # tracker connection goes here too when it's set, which locks it in
-    # the app's Settings. Readable by root only: it holds the API token.
-    - name: Set the time zone and maintenance tracker connection
+    # the app's Settings. So does single sign-on when sso_url is set
+    # (unset it and redeploy to turn SSO off; `local-login on` is the
+    # break-glass). Readable by root only: it holds the API token and the
+    # SSO client secret.
+    - name: Set the time zone, maintenance tracker connection and single sign-on
       ansible.builtin.copy:
         content: |
           [Service]
@@ -114,6 +132,13 @@
           {% endif %}
           {% if tracker_token %}
           Environment="TRACKER_TOKEN={{ tracker_token }}"
+          {% endif %}
+          {% if sso_url %}
+          Environment="SSO_URL={{ sso_url }}"
+          Environment="SSO_INTERNAL_URL={{ sso_internal_url }}"
+          Environment="SSO_CLIENT_ID={{ sso_client_id }}"
+          Environment="SSO_CLIENT_SECRET={{ sso_client_secret }}"
+          Environment="BASE_URL={{ base_url }}"
           {% endif %}
         dest: /etc/systemd/system/production-planner.service.d/override.conf
         mode: "0600"

@@ -26,12 +26,17 @@ type client struct {
 
 func newTestServer(t *testing.T) (*client, *store.Store) {
 	t.Helper()
+	return newTestServerWith(t, Config{})
+}
+
+func newTestServerWith(t *testing.T, cfg Config) (*client, *store.Store) {
+	t.Helper()
 	st, err := store.Open(filepath.Join(t.TempDir(), "test.db"))
 	if err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { st.Close() })
-	srv, err := New(Config{}, st, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	srv, err := New(cfg, st, slog.New(slog.NewTextHandler(io.Discard, nil)))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -289,10 +294,9 @@ func TestLiveEvents(t *testing.T) {
 	c, st := newTestServer(t)
 	st.CreateUser("director", "", "a long password", true)
 
-	// The stream is for signed-in people only.
-	if body := c.get("/live", 200); !strings.Contains(body, "Sign in to plan") {
-		t.Fatal("/live should ask to sign in")
-	}
+	// The stream is for signed-in people only, and says so with a plain
+	// 401 (no redirect to /login for the EventSource to follow).
+	c.get("/live", http.StatusUnauthorized)
 	c.post("/login", "/login", url.Values{"username": {"director"}, "password": {"a long password"}}, 200)
 
 	resp, err := c.http.Get(c.base + "/live")

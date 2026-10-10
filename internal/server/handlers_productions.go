@@ -82,7 +82,16 @@ func (s *Server) productionForm(w http.ResponseWriter, r *http.Request, status i
 	data := map[string]any{"Title": title, "Form": p, "Errors": errs, "Statuses": store.ProductionStatuses}
 	// Only admins see who's on it and can change that.
 	if currentUser(r).IsAdmin {
-		users, err := s.store.ListUsers()
+		// Current members stay listed even if their access was removed.
+		var keep []int64
+		if p.ID != 0 {
+			var err error
+			if keep, err = s.store.Members(p.ID); err != nil {
+				s.serverError(w, r, err)
+				return
+			}
+		}
+		users, err := s.pickableUsers(r, keep)
 		if err != nil {
 			s.serverError(w, r, err)
 			return

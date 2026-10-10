@@ -37,3 +37,10 @@ droplet_name: maintenance-tracker
 # The maintenance tracker (token from PP_TRACKER_TOKEN in the environment).
 # Or leave unset and connect it in the app under Settings.
 # tracker_url: https://maintenance.example.org
+
+# Single sign-on through User Management (secret from UM_PLANNER_SECRET in
+# the environment). Leave sso_url unset for the planner's own passwords;
+# unset it and redeploy to turn SSO back off. Break-glass if User Management
+# is down: `local-login on` on the droplet (README: Single sign-on).
+# sso_url: https://accounts.example.org
+# base_url: https://productions.example.org   # sign-in returns to base_url/auth/callback

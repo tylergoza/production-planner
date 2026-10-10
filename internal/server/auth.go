@@ -1,6 +1,7 @@
 package server
 
 import (
+	"context"
 	"net/http"
 	"net/url"
 	"strings"
@@ -18,7 +19,11 @@ func urlEscape(s string) string { return url.QueryEscape(s) }
 // Login ------------------------------------------------------------------
 
 func (s *Server) handleLoginForm(w http.ResponseWriter, r *http.Request) {
-	if n, _ := s.store.CountUsers(); n == 0 {
+	if s.ssoSignIn() {
+		s.handleSSOStart(w, r)
+		return
+	}
+	if n, _ := s.store.CountUsers(); n == 0 && !s.sso.Enabled() {
 		http.Redirect(w, r, "/setup", http.StatusSeeOther)
 		return
 	}
@@ -26,15 +31,19 @@ func (s *Server) handleLoginForm(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, safeRedirect(r.URL.Query().Get("next")), http.StatusSeeOther)
 		return
 	}
-	s.render(w, r, http.StatusOK, "login", map[string]any{"Title": "Sign in", "Next": r.URL.Query().Get("next")})
+	s.render(w, r, http.StatusOK, "login", map[string]any{"Title": "Sign in", "Next": r.URL.Query().Get("next"), "SSO": s.sso.Enabled()})
 }
 
 func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 	username, password, next := formStr(r, "username"), r.PostFormValue("password"), r.PostFormValue("next")
 	ip := s.clientIP(r)
+	if s.ssoSignIn() {
+		http.Redirect(w, r, "/login?next="+urlEscape(safeRedirect(next)), http.StatusSeeOther)
+		return
+	}
 	fail := func(msg string) {
 		s.render(w, r, http.StatusUnauthorized, "login", map[string]any{
-			"Title": "Sign in", "Next": next, "Username": username, "Error": msg,
+			"Title": "Sign in", "Next": next, "Username": username, "Error": msg, "SSO": s.sso.Enabled(),
 		})
 	}
 	if !s.limiter.allow(ip) {
@@ -48,19 +57,27 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.limiter.reset(ip)
-	if err := s.startSession(w, r, user.ID); err != nil {
+	if err := s.startSession(w, r, user.ID, ""); err != nil {
 		s.serverError(w, r, err)
 		return
 	}
 	s.redirect(w, r, safeRedirect(next), "Welcome back, "+user.Name()+".")
 }
 
-func (s *Server) startSession(w http.ResponseWriter, r *http.Request, userID int64) error {
+// startSession signs the browser in. grant is the SSO grant behind it, or
+// "" for a local password login.
+func (s *Server) startSession(w http.ResponseWriter, r *http.Request, userID int64, grant string) error {
 	// Drop any existing session so a fresh token is issued on login.
 	if c, err := r.Cookie(sessionCookie); err == nil {
 		s.store.DeleteSession(c.Value)
 	}
-	sess, err := s.store.CreateSession(userID, s.cfg.SessionTTL)
+	var sess *store.Session
+	var err error
+	if grant != "" {
+		sess, err = s.store.CreateSSOSession(userID, grant, s.cfg.SessionTTL)
+	} else {
+		sess, err = s.store.CreateSession(userID, s.cfg.SessionTTL)
+	}
 	if err != nil {
 		return err
 	}
@@ -72,16 +89,38 @@ func (s *Server) startSession(w http.ResponseWriter, r *http.Request, userID int
 }
 
 func (s *Server) handleLogout(w http.ResponseWriter, r *http.Request) {
+	// Signing out of an SSO session signs out of User Management too
+	// (server to server, so there's no confirm page or logout CSRF there),
+	// and so out of the other apps on their next grant check.
+	if sess, _ := r.Context().Value(ctxSession).(*store.Session); sess != nil && sess.Grant != "" && s.sso.Enabled() {
+		ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+		if err := s.sso.Logout(ctx, sess.Grant); err != nil {
+			s.log.Warn("sign out of User Management failed", "user", sess.User.Username, "err", err)
+		}
+		cancel()
+	}
 	if c, err := r.Cookie(sessionCookie); err == nil {
 		s.store.DeleteSession(c.Value)
 	}
 	http.SetCookie(w, &http.Cookie{Name: sessionCookie, Path: "/", MaxAge: -1})
+	if s.ssoSignIn() {
+		// Not /login: that would go straight back to User Management.
+		http.Redirect(w, r, "/signed-out", http.StatusSeeOther)
+		return
+	}
 	s.redirect(w, r, "/", "You have been signed out.")
 }
 
 // First-run setup ----------------------------------------------------------
 
+// First-run setup is for the local login only: with SSO, people (and the
+// first admin) come from User Management.
+
 func (s *Server) handleSetupForm(w http.ResponseWriter, r *http.Request) {
+	if s.sso.Enabled() {
+		s.notFound(w, r)
+		return
+	}
 	if n, _ := s.store.CountUsers(); n > 0 {
 		http.Redirect(w, r, "/login", http.StatusSeeOther)
 		return
@@ -90,6 +129,10 @@ func (s *Server) handleSetupForm(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleSetup(w http.ResponseWriter, r *http.Request) {
+	if s.sso.Enabled() {
+		s.notFound(w, r)
+		return
+	}
 	if n, _ := s.store.CountUsers(); n > 0 {
 		http.Redirect(w, r, "/login", http.StatusSeeOther)
 		return
@@ -112,7 +155,7 @@ func (s *Server) handleSetup(w http.ResponseWriter, r *http.Request) {
 		s.serverError(w, r, err)
 		return
 	}
-	if err := s.startSession(w, r, id); err != nil {
+	if err := s.startSession(w, r, id, ""); err != nil {
 		s.serverError(w, r, err)
 		return
 	}
@@ -141,18 +184,41 @@ func validatePassword(password, confirm string) []string {
 
 // Account ----------------------------------------------------------------
 
+// accountData is what the account page needs besides errors: with SSO,
+// a link to the account page in User Management; the local password form
+// only for people who have a password and while it's how they sign in.
+func (s *Server) accountData(r *http.Request, errs []string) map[string]any {
+	data := map[string]any{
+		"Title":        "My account",
+		"Errors":       errs,
+		"ShowPassword": !s.ssoSignIn() && s.store.HasPassword(currentUser(r).ID),
+	}
+	if s.sso.Enabled() {
+		data["SSOAccountURL"] = s.sso.PublicURL + "/account"
+	}
+	return data
+}
+
 func (s *Server) handleAccount(w http.ResponseWriter, r *http.Request) {
-	s.render(w, r, http.StatusOK, "account", map[string]any{"Title": "My account"})
+	s.render(w, r, http.StatusOK, "account", s.accountData(r, nil))
 }
 
 func (s *Server) handleAccountPassword(w http.ResponseWriter, r *http.Request) {
 	u := currentUser(r)
+	if !s.store.HasPassword(u.ID) {
+		msg := "Your account has no password in this app."
+		if s.sso.Enabled() {
+			msg += " Change your password in User Management."
+		}
+		s.render(w, r, http.StatusUnprocessableEntity, "account", s.accountData(r, []string{msg}))
+		return
+	}
 	if _, ok := s.store.Authenticate(u.Username, r.PostFormValue("current_password")); !ok {
-		s.render(w, r, http.StatusUnprocessableEntity, "account", map[string]any{"Title": "My account", "Errors": []string{"Current password is incorrect."}})
+		s.render(w, r, http.StatusUnprocessableEntity, "account", s.accountData(r, []string{"Current password is incorrect."}))
 		return
 	}
 	if errs := validatePassword(r.PostFormValue("password"), r.PostFormValue("password_confirm")); len(errs) > 0 {
-		s.render(w, r, http.StatusUnprocessableEntity, "account", map[string]any{"Title": "My account", "Errors": errs})
+		s.render(w, r, http.StatusUnprocessableEntity, "account", s.accountData(r, errs))
 		return
 	}
 	if err := s.store.SetPassword(u.ID, r.PostFormValue("password")); err != nil {
@@ -160,7 +226,7 @@ func (s *Server) handleAccountPassword(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	// SetPassword ends all sessions; start a fresh one for this device.
-	if err := s.startSession(w, r, u.ID); err != nil {
+	if err := s.startSession(w, r, u.ID, ""); err != nil {
 		s.serverError(w, r, err)
 		return
 	}
@@ -169,7 +235,15 @@ func (s *Server) handleAccountPassword(w http.ResponseWriter, r *http.Request) {
 
 // User admin -------------------------------------------------------------
 
+// With SSO on, /admin/users is the app-admin Users page (sso_users.go) and
+// people are added, renamed and given passwords in User Management, so the
+// local add/edit/delete pages are gone.
+
 func (s *Server) handleUsers(w http.ResponseWriter, r *http.Request) {
+	if s.sso.Enabled() {
+		s.handleSSOUsers(w, r)
+		return
+	}
 	users, err := s.store.ListUsers()
 	if err != nil {
 		s.serverError(w, r, err)
@@ -179,10 +253,18 @@ func (s *Server) handleUsers(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleUserNew(w http.ResponseWriter, r *http.Request) {
+	if s.sso.Enabled() {
+		s.notFound(w, r)
+		return
+	}
 	s.render(w, r, http.StatusOK, "users/form", map[string]any{"Title": "Add user", "Form": store.User{}})
 }
 
 func (s *Server) handleUserCreate(w http.ResponseWriter, r *http.Request) {
+	if s.sso.Enabled() {
+		s.notFound(w, r)
+		return
+	}
 	u := store.User{Username: formStr(r, "username"), DisplayName: formStr(r, "display_name"), IsAdmin: r.PostFormValue("is_admin") == "1"}
 	errs := validateNewUser(u.Username, r.PostFormValue("password"), r.PostFormValue("password_confirm"))
 	if len(errs) == 0 {
@@ -203,6 +285,10 @@ func (s *Server) handleUserCreate(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleUserEdit(w http.ResponseWriter, r *http.Request) {
+	if s.sso.Enabled() {
+		s.notFound(w, r)
+		return
+	}
 	u, err := s.store.GetUser(pathID(r))
 	if err != nil {
 		s.serverError(w, r, err)
@@ -212,6 +298,10 @@ func (s *Server) handleUserEdit(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleUserUpdate(w http.ResponseWriter, r *http.Request) {
+	if s.sso.Enabled() {
+		s.notFound(w, r)
+		return
+	}
 	u, err := s.store.GetUser(pathID(r))
 	if err != nil {
 		s.serverError(w, r, err)
@@ -220,7 +310,10 @@ func (s *Server) handleUserUpdate(w http.ResponseWriter, r *http.Request) {
 	wasAdmin := u.IsAdmin
 	u.DisplayName, u.IsAdmin = formStr(r, "display_name"), r.PostFormValue("is_admin") == "1"
 	var errs []string
-	if wasAdmin && !u.IsAdmin {
+	// CountAdmins counts active admins only, so only demoting an active
+	// admin can leave none. (An inactive one, left over from SSO, can be
+	// demoted freely; the admin doing it is active and still counts.)
+	if wasAdmin && !u.IsAdmin && u.Active {
 		if n, _ := s.store.CountAdmins(); n <= 1 {
 			errs = append(errs, "At least one administrator is required.")
 		}
@@ -243,13 +336,21 @@ func (s *Server) handleUserUpdate(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		if u.ID == currentUser(r).ID {
-			s.startSession(w, r, u.ID)
+			grant := ""
+			if sess, _ := r.Context().Value(ctxSession).(*store.Session); sess != nil {
+				grant = sess.Grant
+			}
+			s.startSession(w, r, u.ID, grant)
 		}
 	}
 	s.redirect(w, r, "/admin/users", "User "+u.Username+" updated.")
 }
 
 func (s *Server) handleUserDelete(w http.ResponseWriter, r *http.Request) {
+	if s.sso.Enabled() {
+		s.notFound(w, r)
+		return
+	}
 	id := pathID(r)
 	if id == currentUser(r).ID {
 		s.setFlash(w, r, "error", "You can't delete your own account.")

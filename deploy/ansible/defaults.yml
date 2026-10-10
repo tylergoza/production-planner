@@ -61,6 +61,24 @@ tz: America/Chicago
 tracker_url: ""
 tracker_token: "{{ lookup('env', 'PP_TRACKER_TOKEN') }}"
 
+# Single sign-on through User Management. Empty sso_url keeps the planner's
+# own password login. To turn SSO on, set sso_url and base_url in vars.yml,
+# pass the client secret in the environment, and redeploy:
+#   export UM_PLANNER_SECRET=...   # printed by User Management's import-users playbook
+# To turn it back off, unset sso_url and redeploy. If User Management breaks
+# while SSO is on, `local-login on` on the droplet is the break-glass (README:
+# Single sign-on).
+sso_url: ""
+# User Management for server-to-server calls; it runs on port 8100 of the
+# shared droplet.
+sso_internal_url: "http://127.0.0.1:8100"
+sso_client_id: planner
+sso_client_secret: "{{ lookup('env', 'UM_PLANNER_SECRET') }}"
+# The planner's public https address, e.g. https://productions.example.org.
+# Used for the sign-in return address (base_url/auth/callback), which must
+# match what's registered in User Management. Required when sso_url is set.
+base_url: ""
+
 # The first deploy to an empty database creates this admin before the app
 # starts, so /setup is never open. Leave PP_ADMIN_PASSWORD unset to get a
 # random password printed at the end of the run.

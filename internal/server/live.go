@@ -13,7 +13,9 @@ import (
 // on /live, a Server-Sent Events stream (/events is taken by the schedule).
 // When anyone saves something, every listener gets a bare "change" message
 // and re-fetches its own page, so the stream never carries data and needs
-// no permission checks beyond being signed in.
+// no permission checks beyond being signed in. That's checked against the
+// stored session only, never User Management (see loadSession), and a
+// signed-out stream gets a 401 rather than a redirect to /login.
 
 const (
 	maxListeners = 1000

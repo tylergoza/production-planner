@@ -72,15 +72,80 @@ Set with a flag or an environment variable. Flags go **before** any command.
 | `TRUST_PROXY=1` | `-trust-proxy` | off | Trust `X-Forwarded-For/Proto` from a reverse proxy. Only when a proxy is the only way in. |
 | `DEV=1` | `-dev` | off | Load templates/static from `./web` on disk |
 | `TRACKER_URL`, `TRACKER_TOKEN` | | | The maintenance tracker connection. When set, they override Settings and can't be changed there. |
+| `SSO_URL` | | | User Management's public address (e.g. `https://accounts.example.org`). Set it to sign in there instead of with local passwords; empty keeps the local login. |
+| `SSO_INTERNAL_URL` | | `SSO_URL` | User Management for server-to-server calls, e.g. `http://127.0.0.1:8100` on the shared droplet |
+| `SSO_CLIENT_ID`, `SSO_CLIENT_SECRET` | | | From registering this app in User Management (shown once). Required when `SSO_URL` is set; the app won't start without them. |
+| `BASE_URL` | | from the request | This app's public address, e.g. `https://plan.example.org`. The sign-in redirect URI is `BASE_URL/auth/callback` and must be registered exactly like that in User Management. |
 
 ## Commands
 
 ```sh
 production-planner create-user alice [--admin]   # prompts for a password (10+ characters)
-production-planner reset-password alice
+production-planner reset-password alice           # also gives SSO users a local password, and turns them back on
+production-planner local-login on|off             # break-glass, see below
 production-planner backup /path/backup.db        # safe while the app is running
 production-planner seed-demo                     # a sample production
 ```
+
+## Single sign-on
+
+With `SSO_URL` set, people sign in with their church account in User
+Management (the `user_management` repo) instead of a password here:
+
+1. `/login` sends the browser to User Management's `/authorize`
+   (authorization code + PKCE). The state and PKCE verifier wait in a
+   10-minute `pp_sso` cookie.
+2. User Management sends it back to `/auth/callback` with a code. The app
+   checks the state, swaps the code for a grant (server to server), and
+   adds or updates the person's local user row by their User Management ID.
+   An existing local user with the same username is linked, so their
+   history stays theirs. Role `admin` there means admin here.
+3. Every 5 minutes at most, a session's grant is checked again, which picks
+   up name and role changes. If User Management says the sign-in has
+   ended (signed out, turned off, access removed), the session ends here
+   too. If it can't be reached, sessions keep working for an hour past
+   their last good check, so restarting it signs no one out.
+4. Signing out here also signs out of User Management, and so of the
+   other apps within 5 minutes.
+
+`/setup` is gone and `/account` links to User Management's account page.
+Production members and other planner permissions stay in this app.
+
+**Users page.** With SSO on, Admin › Users (`/admin/users`) is the app-admin
+page for this app's people, read from and changed through User
+Management's API. It lists everyone with access to the planner: username,
+name, role, whether they're active, suspended or turned off, and who last
+changed it. An admin can change someone's role (any role the planner has
+there) or suspend and restore their access. Suspending signs them out of
+the planner straight away. User Management checks every change against
+its own records, as the signed-in admin, and the page shows its answer if
+it says no (e.g. "make someone else an admin first" for the last admin).
+Rows a user admin has locked are read-only. There's no adding people,
+passwords, renames or deleting here: a user admin does those in User
+Management, and user admins get a "Manage in User Management" link. An
+admin signed in with the break-glass local login sees the list read-only.
+
+Opening the Users page or a people picker (a production's members) pulls
+the list from User Management (reused for a minute) and updates the local
+users, so people show up before they've ever signed in here. Anyone whose
+access is gone keeps their local row, so their history stays theirs, but
+is marked inactive: they stay on productions they were already a member
+of, marked "(no access)", and can't be newly added. If User Management
+can't be reached, the pickers use the last list.
+
+**Break-glass.** If User Management is broken, an admin can bring the
+password form back over SSH, without a restart:
+
+```sh
+sudo -u planner production-planner -db /var/lib/production-planner/productions.db local-login on
+sudo -u planner production-planner -db /var/lib/production-planner/productions.db reset-password alice
+```
+
+People who only ever signed in through SSO have no password here, so give
+the admin one with `reset-password` (which also turns their account here
+back on, in case their access was removed). `/login` then shows the password form
+(with a link to sign in through User Management as well). Run
+`local-login off` once User Management is back.
 
 ## Deploying
 
@@ -121,6 +186,27 @@ make deploy                            # every update after that
 On the first deploy the admin user is created before the app starts, so
 `/setup` is never exposed. Set `PP_ADMIN_PASSWORD` to choose its password, or
 a random one is printed at the end.
+
+#### Turning on single sign-on
+
+SSO stays off until `sso_url` is set (see Single sign-on above). Once User
+Management is deployed on the same droplet and its import-users playbook has
+printed the planner's client secret:
+
+```sh
+# in deploy/ansible/vars.yml:
+#   sso_url: https://accounts.example.org
+#   base_url: https://productions.example.org   # sign-in returns to base_url/auth/callback
+export DIGITALOCEAN_TOKEN=...
+export UM_PLANNER_SECRET=...           # from User Management's import-users playbook
+make deploy
+```
+
+The deploy stops before building if `sso_url` is set without the secret or
+`base_url`, so keep `UM_PLANNER_SECRET` exported for every deploy while SSO
+is on. The secret goes only into the root-only systemd drop-in, with
+nothing logged. To turn SSO back off, remove `sso_url` and deploy again. If
+User Management is down, use the `local-login on` break-glass above instead.
 
 With a hardware SSH key, use a deploy key as described in the tracker's
 README (`ssh_private_key_file` in `vars.yml`; the same key works for both).

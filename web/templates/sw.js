@@ -11,6 +11,11 @@ const PRECACHE = __PRECACHE__
 // screens always need the network.
 const OFFLINE_PAGE = /^\/(productions\/\d+(\/mics)?)?$/
 
+// Signing in and out is left entirely to the browser: never cached, and
+// the redirects to and from User Management (another origin) are followed
+// by the browser itself rather than through this worker.
+const AUTH_PAGE = /^\/(login|logout|signed-out|auth\/.*)$/
+
 self.addEventListener("install", (event) => {
   event.waitUntil(
     caches.open(STATIC_CACHE).then((cache) => cache.addAll(PRECACHE)).then(() => self.skipWaiting())
@@ -37,7 +42,7 @@ self.addEventListener("fetch", (event) => {
     event.waitUntil(caches.delete(PAGE_CACHE))
     return
   }
-  if (request.method !== "GET") return
+  if (request.method !== "GET" || AUTH_PAGE.test(url.pathname)) return
 
   if (url.pathname.startsWith("/static/")) {
     event.respondWith(cacheFirst(request))
@@ -55,6 +60,9 @@ async function cacheFirst(request) {
   return response
 }
 
+// Navigations are fetched with the request's own redirect mode
+// ("manual"), so a redirect (e.g. to /login and on to User Management)
+// goes back to the browser as-is and it follows it.
 async function networkFirstPage(request, url) {
   try {
     const response = await fetch(request)

@@ -3,6 +3,7 @@
 //	production-planner                       start the web server
 //	production-planner create-user NAME      create a user (prompts for password)
 //	production-planner reset-password NAME   set a new password for a user
+//	production-planner local-login on|off    break-glass: password sign-in even with SSO_URL set
 //	production-planner backup FILE           write a consistent copy of the database
 //	production-planner seed-demo             add a sample production to try the app out
 //
@@ -75,6 +76,9 @@ func main() {
 	srv, err := server.New(server.Config{
 		Dev: *dev, TrustProxy: *trustProxy,
 		TrackerURL: os.Getenv("TRACKER_URL"), TrackerToken: os.Getenv("TRACKER_TOKEN"),
+		BaseURL: env("BASE_URL", ""),
+		SSOURL:  env("SSO_URL", ""), SSOInternalURL: env("SSO_INTERNAL_URL", ""),
+		SSOClientID: env("SSO_CLIENT_ID", ""), SSOClientSecret: env("SSO_CLIENT_SECRET", ""),
 	}, st, logger)
 	if err != nil {
 		logger.Error("init server", "err", err)
@@ -126,6 +130,7 @@ func main() {
 var commandUsage = map[string]string{
 	"create-user":    "create-user USERNAME [--admin]",
 	"reset-password": "reset-password USERNAME",
+	"local-login":    "local-login on|off",
 	"backup":         "backup DEST_FILE",
 	"seed-demo":      "seed-demo",
 }
@@ -138,13 +143,16 @@ func checkCommand(args []string) error {
 	}
 	usage, ok := commandUsage[args[0]]
 	if !ok {
-		return fmt.Errorf("unknown command %q (commands: create-user, reset-password, backup, seed-demo)", args[0])
+		return fmt.Errorf("unknown command %q (commands: create-user, reset-password, local-login, backup, seed-demo)", args[0])
 	}
 	rest := args[1:]
 	if args[0] == "create-user" {
 		rest = slices.DeleteFunc(slices.Clone(rest), func(a string) bool { return a == "--admin" })
 	}
 	if args[0] != "seed-demo" && len(rest) < 1 {
+		return errors.New("usage: " + usage)
+	}
+	if args[0] == "local-login" && rest[0] != "on" && rest[0] != "off" {
 		return errors.New("usage: " + usage)
 	}
 	for _, a := range rest {
@@ -184,7 +192,25 @@ func runCommand(st *store.Store, args []string) error {
 		if err := st.SetPassword(id, pw); err != nil {
 			return err
 		}
-		fmt.Printf("Password updated for %q\n", args[1])
+		// Break-glass: make sure they can sign in, even if their access
+		// was removed in User Management.
+		if err := st.SetActive(id, true); err != nil {
+			return err
+		}
+		fmt.Printf("Password updated for %q (and their account is active here)\n", args[1])
+	case "local-login":
+		// Break-glass for when User Management is down: brings the
+		// password form back on /login. Users who came from single
+		// sign-on have no password here; give one with reset-password.
+		if err := st.SetSetting("local_login", args[1]); err != nil {
+			return err
+		}
+		if args[1] == "on" {
+			fmt.Println("Local login is on: /login shows the password form, even with SSO_URL set.")
+			fmt.Println("Set a password with reset-password USERNAME if needed. Turn it off again with local-login off.")
+		} else {
+			fmt.Println("Local login is off: with SSO_URL set, /login goes to User Management.")
+		}
 	case "backup":
 		if _, err := os.Stat(args[1]); err == nil {
 			return fmt.Errorf("%s already exists", args[1])
@@ -199,7 +225,7 @@ func runCommand(st *store.Store, args []string) error {
 		}
 		fmt.Println("Demo production added.")
 	default:
-		return fmt.Errorf("unknown command %q (commands: create-user, reset-password, backup, seed-demo)", args[0])
+		return fmt.Errorf("unknown command %q (commands: create-user, reset-password, local-login, backup, seed-demo)", args[0])
 	}
 	return nil
 }

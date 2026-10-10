@@ -54,7 +54,7 @@
       </div>
       <div class="member-list" data-reveal-target="section" data-reveal-when="access=locked">
         {{range .Users}}
-          {{if not .IsAdmin}}<label class="check"><input type="checkbox" name="member" value="{{.ID}}" {{if index $.IsMember .ID}}checked{{end}}> {{.Name}}</label>{{end}}
+          {{if not .IsAdmin}}<label class="check"><input type="checkbox" name="member" value="{{.ID}}" {{if index $.IsMember .ID}}checked{{end}}> {{.Name}}{{if not .Active}} <span class="muted small">(no access)</span>{{end}}</label>{{end}}
         {{end}}
         <p class="hint">Nobody else will see it or be able to change it. Admins always see every production.</p>
       </div>

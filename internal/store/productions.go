@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"errors"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -115,19 +116,29 @@ func (s *Store) Members(productionID int64) ([]int64, error) {
 	return out, rows.Err()
 }
 
-// SetMembers replaces a production's member list.
+// SetMembers replaces a production's member list. Inactive users (access
+// removed) stay on it if they were already, but can't be newly added.
 func (s *Store) SetMembers(productionID int64, userIDs []int64) error {
 	tx, err := s.DB.Begin()
 	if err != nil {
 		return err
 	}
 	defer tx.Rollback()
-	if _, err := tx.Exec(`DELETE FROM production_members WHERE production_id = ?`, productionID); err != nil {
+	del := `DELETE FROM production_members WHERE production_id = ?`
+	if len(userIDs) > 0 {
+		ids := make([]string, len(userIDs))
+		for i, id := range userIDs {
+			ids[i] = strconv.FormatInt(id, 10)
+		}
+		del += ` AND user_id NOT IN (` + strings.Join(ids, ",") + `)`
+	}
+	if _, err := tx.Exec(del, productionID); err != nil {
 		return err
 	}
 	for _, id := range userIDs {
-		// Skips IDs that aren't users (anymore) rather than failing.
-		if _, err := tx.Exec(`INSERT OR IGNORE INTO production_members (production_id, user_id) SELECT ?, id FROM users WHERE id = ?`, productionID, id); err != nil {
+		// Skips IDs that aren't (active) users rather than failing;
+		// current members are kept by the IGNORE.
+		if _, err := tx.Exec(`INSERT OR IGNORE INTO production_members (production_id, user_id) SELECT ?, id FROM users WHERE id = ? AND active = 1`, productionID, id); err != nil {
 			return err
 		}
 	}

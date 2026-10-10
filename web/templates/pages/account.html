@@ -5,6 +5,18 @@
     <p class="muted">Signed in as <strong>{{.User.Username}}</strong>{{if .User.IsAdmin}} · Administrator{{end}}</p>
   </div>
 </div>
+{{if .SSOAccountURL}}
+<div class="card narrow">
+  <h2>Your church account</h2>
+  <p class="muted">You sign in with your church account. Change your name, password or email there.</p>
+  <p><a class="btn btn--primary" href="{{.SSOAccountURL}}">Manage your account</a></p>
+</div>
+{{end}}
+{{if not .ShowPassword}}
+{{template "errors" .Errors}}
+{{if not .SSOAccountURL}}<div class="card narrow"><p class="muted">Your account has no password in this app. Ask an administrator to set one.</p></div>{{end}}
+{{end}}
+{{if .ShowPassword}}
 <div class="card narrow">
   <h2>Change password</h2>
   {{template "errors" .Errors}}
@@ -26,4 +38,5 @@
     <button type="submit" class="btn btn--primary">Update password</button>
   </form>
 </div>
+{{end}}
 {{end}}

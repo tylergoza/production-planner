@@ -30,6 +30,7 @@
       <div class="field">
         <label for="venue">Where <span class="optional">optional</span></label>
         <input id="venue" name="venue" value="{{.Form.Venue}}" placeholder="e.g. Sanctuary">
+        <p class="hint">Shown as it's typed. The rooms it books are picked under Rooms{{if not .Form.ID}}, once it's added{{end}}.</p>
       </div>
       <div class="field">
         <label for="director">Director <span class="optional">optional</span></label>
@@ -44,6 +45,10 @@
       <label for="notes">Notes <span class="optional">optional</span></label>
       <textarea id="notes" name="notes" rows="4">{{.Form.Notes}}</textarea>
       <p class="hint">Anything the team should know: call times, parking, who has the keys.</p>
+    </div>
+    <div class="field">
+      <label class="check"><input type="checkbox" name="public" value="1" {{if .Form.Public}}checked{{end}}> Public</label>
+      <p class="hint">Its performances show on the church's public calendar. Rehearsals, tech and dress never do{{if .User.IsAdmin}}, and a locked production shows only as rooms being busy{{end}}.</p>
     </div>
     {{if .User.IsAdmin}}
     <fieldset class="fieldset">
@@ -69,6 +74,63 @@
   </form>
 </div>
 {{if .Form.ID}}
+{{$id := .Form.ID}}
+<div class="card narrow" id="rooms">
+  <h2 class="section__title">Rooms</h2>
+  <p class="muted small">The rooms this production usually uses. Each new date starts with these; a date can still use others.</p>
+  {{if .Rooms}}
+    <ul class="pick-list">
+      {{range .Rooms}}
+        <li>
+          <div>{{.PlaceName}}{{if not .FromTracker}} <span class="chip">not in tracker</span>{{end}}</div>
+          <div class="actions">
+            {{template "move-buttons" (dict "Action" (printf "/production-rooms/%d/move" .ID) "CSRF" $.CSRF "Next" (printf "/productions/%d/edit#rooms" $id))}}
+            {{template "delete-button" (dict "Action" (printf "/production-rooms/%d/delete" .ID) "CSRF" $.CSRF "Label" "Remove" "Confirm" (printf "Take %s off this production's rooms? Dates that use it keep it." .PlaceName))}}
+          </div>
+        </li>
+      {{end}}
+    </ul>
+  {{else}}
+    <p class="muted small">No rooms yet.</p>
+  {{end}}
+
+  <h3 id="find">Find a room in the maintenance tracker</h3>
+  {{if .TrackerOn}}
+    <form method="get" action="/productions/{{$id}}/edit#find" class="inline-fields">
+      <div class="field"><label for="q" class="sr-only">Search</label><input id="q" type="search" name="q" value="{{.Q}}" placeholder="e.g. sanctuary"></div>
+      <button type="submit" class="btn btn--sm">Search</button>
+    </form>
+    {{with .SearchError}}<div class="alert alert--error">Couldn't check the maintenance tracker: {{.}}</div>{{end}}
+    {{if .Q}}
+      {{if .Found}}
+        <ul class="pick-list">
+          {{range .Found}}
+            <li>
+              <div><strong>{{.Name}}</strong> <span class="chip">{{.Kind}}</span>{{if ne .Path .Name}}<br><span class="muted small">{{.Path}}</span>{{end}}</div>
+              <form method="post" action="/productions/{{$id}}/rooms" class="need-add">
+                {{template "csrf" $.CSRF}}
+                <input type="hidden" name="place_id" value="{{.ID}}">
+                <button type="submit" class="btn btn--sm">Add</button>
+              </form>
+            </li>
+          {{end}}
+        </ul>
+      {{else if not .SearchError}}
+        <p class="muted small">{{if .FoundAll}}Everything matching "{{.Q}}" is already added.{{else}}Nothing in the tracker matches "{{.Q}}".{{end}}</p>
+      {{end}}
+    {{end}}
+  {{else}}
+    <p class="muted small">Connect the maintenance tracker on Connections to pick rooms from it.</p>
+  {{end}}
+
+  <h3>Somewhere else</h3>
+  <form method="post" action="/productions/{{$id}}/rooms" class="inline-fields">
+    {{template "csrf" .CSRF}}
+    <div class="field"><label for="place_name" class="sr-only">Room name</label><input id="place_name" name="place_name" placeholder="A room that isn't in the tracker" required></div>
+    <button type="submit" class="btn btn--sm">Add</button>
+  </form>
+</div>
+
 <div class="card narrow danger-zone">
   <h2 class="section__title">Delete this production</h2>
   <p class="muted small">Deletes its dates, cast, scenes, mic chart and every final version of it, readiness and needs. Nothing in the maintenance tracker is touched. To keep it on record instead, set its status to Done.</p>

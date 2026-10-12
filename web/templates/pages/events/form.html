@@ -2,6 +2,8 @@
 <div class="card narrow">
   <h2 class="section__title">Edit date</h2>
   {{template "errors" .Errors}}
+  {{if .Clashes}}<div class="alert alert--error" role="alert">When this date was last sent, the calendar said its rooms are also booked:
+    {{range $i, $c := .Clashes}}{{if $i}}; {{end}}{{template "clash" $c}}{{end}}.</div>{{end}}
   {{template "event-fields" .}}
 </div>
 <div class="card narrow">

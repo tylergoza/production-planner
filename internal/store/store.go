@@ -16,6 +16,8 @@ import (
 	"strings"
 
 	_ "modernc.org/sqlite" // pure-Go driver, no CGO needed
+
+	"github.com/tylergoza/production-planner/internal/secrets"
 )
 
 //go:embed migrations/*.sql
@@ -26,6 +28,8 @@ var ErrNotFound = errors.New("not found")
 
 type Store struct {
 	DB *sql.DB
+	// key seals secret settings; it lives in secrets.key next to the database.
+	key *secrets.Key
 }
 
 // Open opens (creating if needed) the SQLite database at path and applies
@@ -55,6 +59,14 @@ func openAt(path string, upTo int) (*Store, error) {
 	if err := s.migrate(upTo); err != nil {
 		db.Close()
 		return nil, fmt.Errorf("migrate: %w", err)
+	}
+	if s.key, err = secrets.LoadOrCreate(filepath.Join(filepath.Dir(path), "secrets.key")); err != nil {
+		db.Close()
+		return nil, fmt.Errorf("secrets key: %w", err)
+	}
+	if err := s.sealPlainSecrets(); err != nil {
+		db.Close()
+		return nil, fmt.Errorf("encrypt saved secrets: %w", err)
 	}
 	return s, nil
 }
@@ -163,6 +175,37 @@ func (s *Store) SetSetting(key, value string) error {
 	return err
 }
 
+// SecretSettings are the settings keys that hold passwords and tokens.
+// They're stored sealed (see internal/secrets).
+var SecretSettings = []string{"tracker_token", "calendar_token"}
+
+// SecretSetting is a secret setting, opened. "" when not set;
+// secrets.ErrUnreadable when it was sealed with a different key.
+func (s *Store) SecretSetting(key string) (string, error) {
+	return s.key.Open(s.Setting(key, ""))
+}
+
+// SetSecretSetting seals and saves a secret setting ("" clears it).
+func (s *Store) SetSecretSetting(key, value string) error {
+	sealed, err := s.key.Seal(value)
+	if err != nil {
+		return err
+	}
+	return s.SetSetting(key, sealed)
+}
+
+// sealPlainSecrets encrypts secrets saved before they were sealed.
+func (s *Store) sealPlainSecrets() error {
+	for _, k := range SecretSettings {
+		if v := s.Setting(k, ""); v != "" && !secrets.IsSealed(v) {
+			if err := s.SetSecretSetting(k, v); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
 // helpers ----------------------------------------------------------------
 
 func nullStr(s string) any {
@@ -197,7 +240,7 @@ func (s *Store) nextPosition(table string, productionID int64) (int, error) {
 }
 
 // movable lists the tables whose rows can be moved up and down.
-var movable = map[string]bool{"scenes": true, "cast_members": true, "mics": true}
+var movable = map[string]bool{"scenes": true, "cast_members": true, "mics": true, "production_rooms": true}
 
 // ProductionOf is the production a movable row belongs to.
 func (s *Store) ProductionOf(table string, id int64) (int64, error) {

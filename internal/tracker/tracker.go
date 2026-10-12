@@ -170,6 +170,22 @@ type Supply struct {
 	} `json:"requested"`
 }
 
+// Place is a site, building, floor, room or area. ParentID is nil for a
+// site. Path is the full name, e.g. "Main Building › 2nd floor › 104 – Nursery".
+// Kind is one of "site", "building", "floor", "room" or "area".
+type Place struct {
+	ID       int64    `json:"id"`
+	ParentID *int64   `json:"parent_id"`
+	Kind     string   `json:"kind"`
+	Number   string   `json:"number"`
+	Name     string   `json:"name"`
+	Path     string   `json:"path"`
+	Address  string   `json:"address"`
+	Notes    string   `json:"notes"`
+	Tags     []string `json:"tags"`
+	AlsoIn   []int64  `json:"also_in"` // areas only: other places a shared area is in
+}
+
 // Calls ----------------------------------------------------------------------------
 
 func (c *Client) Products(ctx context.Context, query string) ([]Product, error) {
@@ -212,6 +228,51 @@ func (c *Client) Supplies(ctx context.Context, query string) ([]Supply, error) {
 	}
 	err := c.get(ctx, "/supplies", q, &out)
 	return out.Supplies, err
+}
+
+// Places is every place, in tree order (parents before children).
+func (c *Client) Places(ctx context.Context) ([]Place, error) {
+	var out struct {
+		Places []Place `json:"places"`
+	}
+	err := c.get(ctx, "/places", nil, &out)
+	return out.Places, err
+}
+
+// Place is one place. The tracker also sends its children, items and
+// supplies; those aren't decoded here.
+func (c *Client) Place(ctx context.Context, id int64) (*Place, error) {
+	var out Place
+	if err := c.get(ctx, "/places/"+strconv.FormatInt(id, 10), nil, &out); err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+// Rooms is the places something can be booked in (buildings, rooms and
+// areas) that match query, case-insensitively, against name, number or
+// path. An empty query returns all of them, in tree order.
+func (c *Client) Rooms(ctx context.Context, query string) ([]Place, error) {
+	places, err := c.Places(ctx)
+	if err != nil {
+		return nil, err
+	}
+	q := strings.ToLower(strings.TrimSpace(query))
+	var out []Place
+	for _, p := range places {
+		switch p.Kind {
+		case "building", "room", "area":
+		default:
+			continue
+		}
+		if q == "" ||
+			strings.Contains(strings.ToLower(p.Name), q) ||
+			strings.Contains(strings.ToLower(p.Number), q) ||
+			strings.Contains(strings.ToLower(p.Path), q) {
+			out = append(out, p)
+		}
+	}
+	return out, nil
 }
 
 // Check sees that the address and token work. It asks for a place that

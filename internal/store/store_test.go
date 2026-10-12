@@ -176,7 +176,7 @@ func TestSummary(t *testing.T) {
 	st, id, _, _, _ := chartFixture(t)
 	for _, e := range []Event{{Kind: "rehearsal", Date: "2026-01-01"}, {Kind: "performance", Date: "2026-03-01"}, {Kind: "dress", Date: "2026-02-27", Time: "18:00"}} {
 		e.ProductionID = id
-		st.CreateEvent(&e)
+		st.CreateEvent(&e, nil)
 	}
 	st.CreatePrep(&PrepItem{ProductionID: id, Department: "props", Name: "A", Status: "ready"})
 	st.CreatePrep(&PrepItem{ProductionID: id, Department: "props", Name: "B"})

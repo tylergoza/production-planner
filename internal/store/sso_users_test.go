@@ -19,8 +19,13 @@ func TestMigrationKeepsMembers(t *testing.T) {
 	old.DeleteUser(1) // so ids don't just count from 1
 	annID, _ := old.CreateUser("Ann", "Ann A", "a long password", true)
 	bobID, _ := old.CreateUser("bob", "", "a long password", false)
-	prod, _ := old.CreateProduction(&Production{Title: "Show", Locked: true})
-	// Raw SQL: today's SetMembers and CreateSession need the new columns.
+	// Raw SQL: today's CreateProduction, SetMembers and CreateSession need
+	// the new columns.
+	res, err := old.DB.Exec(`INSERT INTO productions (title, locked) VALUES ('Show', 1)`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	prod, _ := res.LastInsertId()
 	if _, err := old.DB.Exec(`INSERT INTO production_members (production_id, user_id) VALUES (?, ?), (?, ?)`, prod, annID, prod, bobID); err != nil {
 		t.Fatal(err)
 	}

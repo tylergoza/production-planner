@@ -28,7 +28,9 @@ type Production struct {
 	Description string
 	Notes       string
 	// Locked productions are only for their members (and admins).
-	Locked    bool
+	Locked bool
+	// Public productions' performances show on the public church calendar.
+	Public    bool
 	CreatedAt string
 	UpdatedAt string
 }
@@ -36,11 +38,11 @@ type Production struct {
 // Active reports whether the production is still being worked on.
 func (p Production) Active() bool { return p.Status != "done" && p.Status != "cancelled" }
 
-const productionCols = `id, title, kind, status, venue, director, description, notes, locked, created_at, updated_at`
+const productionCols = `id, title, kind, status, venue, director, description, notes, locked, public, created_at, updated_at`
 
 func scanProduction(sc interface{ Scan(...any) error }) (Production, error) {
 	var p Production
-	err := sc.Scan(&p.ID, &p.Title, &p.Kind, &p.Status, &p.Venue, &p.Director, &p.Description, &p.Notes, &p.Locked, &p.CreatedAt, &p.UpdatedAt)
+	err := sc.Scan(&p.ID, &p.Title, &p.Kind, &p.Status, &p.Venue, &p.Director, &p.Description, &p.Notes, &p.Locked, &p.Public, &p.CreatedAt, &p.UpdatedAt)
 	return p, err
 }
 
@@ -56,8 +58,8 @@ func (s *Store) CreateProduction(p *Production) (int64, error) {
 	if p.Status == "" {
 		p.Status = "planning"
 	}
-	res, err := s.DB.Exec(`INSERT INTO productions (title, kind, status, venue, director, description, notes, locked) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-		p.Title, p.Kind, p.Status, p.Venue, p.Director, p.Description, p.Notes, p.Locked)
+	res, err := s.DB.Exec(`INSERT INTO productions (title, kind, status, venue, director, description, notes, locked, public) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		p.Title, p.Kind, p.Status, p.Venue, p.Director, p.Description, p.Notes, p.Locked, p.Public)
 	if err != nil {
 		return 0, err
 	}
@@ -66,8 +68,8 @@ func (s *Store) CreateProduction(p *Production) (int64, error) {
 
 func (s *Store) UpdateProduction(p *Production) error {
 	_, err := s.DB.Exec(`UPDATE productions SET title = ?, kind = ?, status = ?, venue = ?, director = ?, description = ?, notes = ?,
-		locked = ?, updated_at = datetime('now') WHERE id = ?`,
-		p.Title, p.Kind, p.Status, p.Venue, p.Director, p.Description, p.Notes, p.Locked, p.ID)
+		locked = ?, public = ?, updated_at = datetime('now') WHERE id = ?`,
+		p.Title, p.Kind, p.Status, p.Venue, p.Director, p.Description, p.Notes, p.Locked, p.Public, p.ID)
 	return err
 }
 
@@ -267,11 +269,13 @@ type Event struct {
 	Kind         string
 	Date         string
 	Time         string
+	EndTime      string // "" means until done
 	Label        string
 	Notes        string
 }
 
-// When is the date and time for display, e.g. "Sun, Dec 14, 2026 · 6:00 PM".
+// When is the date and time for display, e.g. "Sun, Dec 14, 2026 · 6:00 PM"
+// or "… · 6:00 PM–8:30 PM".
 func (e Event) When() string {
 	d, err := time.Parse(DateLayout, e.Date)
 	if err != nil {
@@ -280,8 +284,52 @@ func (e Event) When() string {
 	out := d.Format("Mon, Jan 2, 2006")
 	if t, err := time.Parse("15:04", e.Time); err == nil {
 		out += " · " + t.Format("3:04 PM")
+		if end, err := time.Parse("15:04", e.EndTime); err == nil {
+			out += "–" + end.Format("3:04 PM")
+		}
 	}
 	return out
+}
+
+// UntilDone is how long a date with a start time but no end time is taken
+// to last, for the calendar and room clashes.
+const UntilDone = 3 * time.Hour
+
+// Bounds is when the date takes up its rooms, as a half-open interval. No
+// start time is all day; no end time is UntilDone after the start. ok is
+// false when the date can't be read.
+func (e Event) Bounds() (start, end time.Time, ok bool) {
+	day, err := time.Parse(DateLayout, e.Date)
+	if err != nil {
+		return start, end, false
+	}
+	at := func(clock string) (time.Time, bool) {
+		c, err := time.Parse("15:04", clock)
+		if err != nil {
+			return day, false
+		}
+		return day.Add(time.Duration(c.Hour())*time.Hour + time.Duration(c.Minute())*time.Minute), true
+	}
+	start, has := at(e.Time)
+	if !has {
+		return day, day.AddDate(0, 0, 1), true
+	}
+	end, has = at(e.EndTime)
+	if !has || !end.After(start) {
+		end = start.Add(UntilDone)
+	}
+	return start, end, true
+}
+
+// Overlaps reports whether two dates take up any of the same time. Dates
+// that can't be read count as overlapping, so a warning is never lost.
+func (e Event) Overlaps(o Event) bool {
+	as, ae, ok1 := e.Bounds()
+	bs, be, ok2 := o.Bounds()
+	if !ok1 || !ok2 {
+		return true
+	}
+	return as.Before(be) && bs.Before(ae)
 }
 
 // Title is the label, or the kind when there isn't one.
@@ -292,11 +340,11 @@ func (e Event) Title() string {
 	return EventKindLabel(e.Kind)
 }
 
-const eventCols = `id, production_id, kind, date, time, label, notes`
+const eventCols = `id, production_id, kind, date, time, end_time, label, notes`
 
 func scanEvent(sc interface{ Scan(...any) error }) (Event, error) {
 	var e Event
-	err := sc.Scan(&e.ID, &e.ProductionID, &e.Kind, &e.Date, &e.Time, &e.Label, &e.Notes)
+	err := sc.Scan(&e.ID, &e.ProductionID, &e.Kind, &e.Date, &e.Time, &e.EndTime, &e.Label, &e.Notes)
 	return e, err
 }
 
@@ -326,7 +374,7 @@ type UpcomingEvent struct {
 
 func (s *Store) UpcomingEvents(u *User, today string, limit int) ([]UpcomingEvent, error) {
 	cond, args := visibleTo(u)
-	rows, err := s.DB.Query(`SELECT e.id, e.production_id, e.kind, e.date, e.time, e.label, e.notes, p.title
+	rows, err := s.DB.Query(`SELECT e.id, e.production_id, e.kind, e.date, e.time, e.end_time, e.label, e.notes, p.title
 		FROM events e JOIN productions p ON p.id = e.production_id
 		WHERE e.date >= ? AND p.status NOT IN ('done', 'cancelled') AND `+cond+`
 		ORDER BY e.date, e.time, e.id LIMIT ?`, append(append([]any{today}, args...), limit)...)
@@ -337,7 +385,7 @@ func (s *Store) UpcomingEvents(u *User, today string, limit int) ([]UpcomingEven
 	var out []UpcomingEvent
 	for rows.Next() {
 		var e UpcomingEvent
-		if err := rows.Scan(&e.ID, &e.ProductionID, &e.Kind, &e.Date, &e.Time, &e.Label, &e.Notes, &e.ProductionTitle); err != nil {
+		if err := rows.Scan(&e.ID, &e.ProductionID, &e.Kind, &e.Date, &e.Time, &e.EndTime, &e.Label, &e.Notes, &e.ProductionTitle); err != nil {
 			return nil, err
 		}
 		out = append(out, e)
@@ -353,19 +401,44 @@ func (s *Store) GetEvent(id int64) (*Event, error) {
 	return &e, nil
 }
 
-func (s *Store) CreateEvent(e *Event) (int64, error) {
-	res, err := s.DB.Exec(`INSERT INTO events (production_id, kind, date, time, label, notes) VALUES (?, ?, ?, ?, ?, ?)`,
-		e.ProductionID, e.Kind, e.Date, e.Time, strings.TrimSpace(e.Label), e.Notes)
+// CreateEvent adds a date and its rooms in one transaction, so the
+// calendar outbox gets one row for it.
+func (s *Store) CreateEvent(e *Event, rooms []Room) (int64, error) {
+	tx, err := s.DB.Begin()
 	if err != nil {
 		return 0, err
 	}
-	return res.LastInsertId()
+	defer tx.Rollback()
+	res, err := tx.Exec(`INSERT INTO events (production_id, kind, date, time, end_time, label, notes) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+		e.ProductionID, e.Kind, e.Date, e.Time, e.EndTime, strings.TrimSpace(e.Label), e.Notes)
+	if err != nil {
+		return 0, err
+	}
+	id, err := res.LastInsertId()
+	if err != nil {
+		return 0, err
+	}
+	if err := setEventRooms(tx, id, rooms); err != nil {
+		return 0, err
+	}
+	return id, tx.Commit()
 }
 
-func (s *Store) UpdateEvent(e *Event) error {
-	_, err := s.DB.Exec(`UPDATE events SET kind = ?, date = ?, time = ?, label = ?, notes = ? WHERE id = ?`,
-		e.Kind, e.Date, e.Time, strings.TrimSpace(e.Label), e.Notes, e.ID)
-	return err
+// UpdateEvent saves a date and replaces its rooms in one transaction.
+func (s *Store) UpdateEvent(e *Event, rooms []Room) error {
+	tx, err := s.DB.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	if _, err := tx.Exec(`UPDATE events SET kind = ?, date = ?, time = ?, end_time = ?, label = ?, notes = ? WHERE id = ?`,
+		e.Kind, e.Date, e.Time, e.EndTime, strings.TrimSpace(e.Label), e.Notes, e.ID); err != nil {
+		return err
+	}
+	if err := setEventRooms(tx, e.ID, rooms); err != nil {
+		return err
+	}
+	return tx.Commit()
 }
 
 func (s *Store) DeleteEvent(id int64) error {

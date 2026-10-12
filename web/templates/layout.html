@@ -37,6 +37,7 @@
           <a href="/productions" {{if eq .Path "/productions"}}aria-current="page"{{end}}>Productions</a>
           {{if .User.IsAdmin}}
             <a href="/admin/users" {{if eq .Path "/admin/users"}}aria-current="page"{{end}}>Users</a>
+            <a href="/admin/connections" {{if eq .Path "/admin/connections"}}aria-current="page"{{end}}>Connections</a>
             <a href="/admin/settings" {{if eq .Path "/admin/settings"}}aria-current="page"{{end}}>Settings</a>
           {{end}}
         {{end}}

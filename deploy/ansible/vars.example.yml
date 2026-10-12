@@ -35,8 +35,14 @@ droplet_name: maintenance-tracker
 # tz: America/Chicago
 
 # The maintenance tracker (token from PP_TRACKER_TOKEN in the environment).
-# Or leave unset and connect it in the app under Settings.
+# Leave blank to manage it in the app on /admin/connections.
 # tracker_url: https://maintenance.example.org
+
+# The church calendar (token from PP_CALENDAR_TOKEN, via with-pp). Leave blank
+# to manage it in the app on /admin/connections. On the shared droplet the
+# internal address is the calendar on localhost.
+# calendar_url: https://calendar.example.org
+# calendar_internal_url: http://127.0.0.1:8120
 
 # Single sign-on through User Management (secret from UM_PLANNER_SECRET in
 # the environment). Leave sso_url unset for the planner's own passwords;

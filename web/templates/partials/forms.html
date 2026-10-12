@@ -9,10 +9,25 @@
         {{range .Kinds}}<option value="{{.}}" {{if eq . $.Form.Kind}}selected{{end}}>{{eventKindLabel .}}</option>{{end}}
       </select>
     </div>
-    <div class="field-row">
-      <div class="field"><label for="date">Date</label><input id="date" name="date" type="date" value="{{.Form.Date}}" required></div>
-      <div class="field"><label for="time">Time <span class="optional">optional</span></label><input id="time" name="time" type="time" value="{{.Form.Time}}"></div>
+    <div class="field">
+      <label for="date">Date</label><input id="date" name="date" type="date" value="{{.Form.Date}}" required>
     </div>
+    <div class="field-row">
+      <div class="field"><label for="time">Starts <span class="optional">optional</span></label><input id="time" name="time" type="time" value="{{.Form.Time}}"></div>
+      <div class="field"><label for="end_time">Ends <span class="optional">optional</span></label><input id="end_time" name="end_time" type="time" value="{{.Form.EndTime}}"></div>
+    </div>
+    <fieldset class="fieldset">
+      <legend>Rooms</legend>
+      {{range .RoomOptions}}
+        <label class="check"><input type="checkbox" name="room" value="{{.Key}}" {{if .Checked}}checked{{end}}> {{.Room.PlaceName}}</label>
+      {{else}}
+        <p class="hint">This production has no rooms yet. <a href="/productions/{{.P.ID}}/edit#rooms">Pick its rooms</a> and new dates start with them.</p>
+      {{end}}
+      <div class="field">
+        <label for="room_other">Somewhere else <span class="optional">optional</span></label>
+        <input id="room_other" name="room_other" placeholder="A room only this date uses">
+      </div>
+    </fieldset>
     <div class="field">
       <label for="label">Label <span class="optional">optional</span></label>
       <input id="label" name="label" value="{{.Form.Label}}" placeholder="e.g. Sunday evening">

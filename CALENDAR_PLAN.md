@@ -5,7 +5,7 @@ This file is the production planner's part. The sending side works the
 same way as the event planner's (`../event_planning/CALENDAR_PLAN.md`), so
 copy from there once it's built.
 
-Status: planned, nothing built yet (2026-10-11).
+Status: steps 1–4 built (2026-10-12); the Ansible side of step 5 is in `deploy.yml`, the deploy itself is still to do.
 
 ## What changes
 
@@ -51,30 +51,30 @@ a production or a date sends `delete`.
 ## Steps
 
 ### 1. Dates get end times and rooms
-- [ ] Migration `004_date_rooms.sql`: `events.end_time`, `production_rooms` (production_id, position, place_id, place_name), `event_rooms` (event_id, place_id, place_name), `productions.public`
-- [ ] Add `Places`/`Rooms` to `internal/tracker` (copy from the event planner)
-- [ ] Production form: rooms picker (copy the event planner's room search controller) and **Public**
-- [ ] Schedule form: end time, rooms (prefilled from the production)
-- [ ] Same-app room clash warning on the schedule, like the event planner's
-- [ ] Tests: rooms default from the production; end time optional
+- [x] Migration `004_date_rooms.sql`: `events.end_time`, `production_rooms` (production_id, position, place_id, place_name), `event_rooms` (event_id, place_id, place_name), `productions.public`
+- [x] Add `Places`/`Rooms` to `internal/tracker` (copy from the event planner)
+- [x] Production form: rooms picker (copy the event planner's room search controller) and **Public**
+- [x] Schedule form: end time, rooms (prefilled from the production)
+- [x] Same-app room clash warning on the schedule, like the event planner's
+- [x] Tests: rooms default from the production; end time optional
 
 ### 2. Client, outbox and worker
-- [ ] `internal/calendar` client (copy from the event planner)
-- [ ] **Calendar** connection (address, internal address, token) built the `CONNECTIONS_PLAN.md` way: on `/admin/connections`, with `CALENDAR_URL`, `CALENDAR_INTERNAL_URL`, `CALENDAR_TOKEN` overriding; README settings table
-- [ ] Migration `005_calendar_outbox.sql`, outbox writes in the store, worker
-- [ ] Tests: locked production sends no title; rehearsal never public; title change re-queues every date
+- [x] `internal/calendar` client (copy from the event planner)
+- [x] **Calendar** connection (address, internal address, token) built the `CONNECTIONS_PLAN.md` way: on `/admin/connections`, with `CALENDAR_URL`, `CALENDAR_INTERNAL_URL`, `CALENDAR_TOKEN` overriding; README settings table
+- [x] Migration `005_calendar_outbox.sql`, outbox writes in the store, worker
+- [x] Tests: locked production sends no title; rehearsal never public; title change re-queues every date
 
 ### 3. Send everything (the backfill)
 A button in the calendar section of the admin **Connections** page, the same as the event planner's (copy it):
 
-- [ ] In the calendar section of `/admin/connections` (admins only): waiting rows, last error, last successful send (connected or not and **Test** come from the connection itself)
-- [ ] **Send all dates to the calendar** button: POST with CSRF, confirm showing the count, queues every date from one year ago on in one transaction, the worker sends them
-- [ ] Safe to press again (one outbox row per date)
-- [ ] Tests: queues the right dates; pressing twice leaves one row per date; non-admins get 403
+- [x] In the calendar section of `/admin/connections` (admins only): waiting rows, last error, last successful send (connected or not and **Test** come from the connection itself)
+- [x] **Send all dates to the calendar** button: POST with CSRF, confirm showing the count, queues every date from one year ago on in one transaction, the worker sends them
+- [x] Safe to press again (one outbox row per date)
+- [x] Tests: queues the right dates; pressing twice leaves one row per date; non-admins get 403
 
 ### 4. Room warnings across apps
-- [ ] Schedule form asks the calendar's `availability` when it's set; falls back to the same-app check
-- [ ] Show returned `conflicts` after a save as a warning
+- [x] Schedule form asks the calendar's `availability` when it's set; falls back to the same-app check
+- [x] Show returned `conflicts` after a save as a warning
 
 ### 5. Deploy
 - [ ] Either set the connection on `/admin/connections`, or for the first deploy use Ansible vars `calendar_url` and the token from the Keychain (`with-pp` gets `PP_CALENDAR_TOKEN` too), then **Keep in settings** and blank them

@@ -129,12 +129,12 @@ func TestEndToEnd(t *testing.T) {
 	}, 200)
 
 	// Connect the tracker; saving checks it answers.
-	if body := c.post("/admin/settings", "/admin/settings", url.Values{
-		"site_name": {"Grace Church Productions"}, "tracker_url": {tracker.URL + "/"}, "tracker_token": {"mt_test"},
+	if body := c.post("/admin/connections", "/admin/connections/tracker", url.Values{
+		"tracker_url": {tracker.URL + "/"}, "tracker_token": {"mt_test"},
 	}, 200); !strings.Contains(body, "Connected to the maintenance tracker") {
 		t.Fatal("expected the tracker check to pass")
 	}
-	if body := c.post("/admin/settings", "/admin/settings", url.Values{"site_name": {"X"}, "tracker_token": {"nope"}}, 422); !strings.Contains(body, "start with mt_") {
+	if body := c.post("/admin/connections", "/admin/connections/tracker", url.Values{"tracker_token": {"nope"}}, 422); !strings.Contains(body, "start with mt_") {
 		t.Error("expected token format error")
 	}
 
@@ -266,9 +266,9 @@ func TestTrackerDown(t *testing.T) {
 	c.post("/setup", "/setup", url.Values{
 		"site_name": {"P"}, "username": {"director"}, "password": {"a long password"}, "password_confirm": {"a long password"},
 	}, 200)
-	if body := c.post("/admin/settings", "/admin/settings", url.Values{
-		"site_name": {"P"}, "tracker_url": {"http://127.0.0.1:1"}, "tracker_token": {"mt_x"},
-	}, 200); !strings.Contains(body, "didn&#39;t answer") {
+	if body := c.post("/admin/connections", "/admin/connections/tracker", url.Values{
+		"tracker_url": {"http://127.0.0.1:1"}, "tracker_token": {"mt_x"},
+	}, 200); !strings.Contains(body, "Can&#39;t reach") {
 		t.Fatal("expected a warning that the tracker didn't answer")
 	}
 	c.post("/productions/new", "/productions", url.Values{"title": {"Show"}, "status": {"planning"}}, 200)

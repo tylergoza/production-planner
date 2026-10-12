@@ -130,3 +130,6 @@
     </section>
   </div>
 {{end}}
+
+{{/* One calendar booking that shares a date's rooms. Pass a server.clash. */}}
+{{define "clash"}}{{if .Busy}}Booked · {{.When}}{{else}}{{if .EventID}}<a href="/events/{{.EventID}}/edit">{{.Title}}</a>{{else}}{{.Title}}{{end}} ({{.When}}{{with .Source}}, {{.}}{{end}}){{end}}{{end}}

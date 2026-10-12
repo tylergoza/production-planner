@@ -21,3 +21,9 @@ the tracker should get the same change.
   The main Caddyfile text must stay identical in both repos' deploy.yml.
   `deploy/ansible/vars.yml` is gitignored and holds the real domain.
 - The user runs all `git commit`s themselves (YubiKey signing). Don't commit.
+- `CALENDAR_PLAN.md` is this app's part of joining `../calendar` (8120);
+  tick its checkboxes as steps are done. Everything there is optional:
+  this app must keep working when `CALENDAR_URL` is unset.
+- `CONNECTIONS_PLAN.md` (design in `../event_planning/CONNECTIONS_PLAN.md`): links to
+  other apps are admin settings on `/admin/connections`; env vars override
+  them per whole connection. Secrets encrypted with `secrets.key`.

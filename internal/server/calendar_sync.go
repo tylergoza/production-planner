@@ -154,8 +154,11 @@ func (s *Server) calendarBooking(e *store.Event, p *store.Production, rooms []st
 			b.Description = p.Description
 		}
 	}
-	if p.Status == "cancelled" {
+	switch {
+	case p.Status == "cancelled":
 		b.Status = "cancelled"
+	case e.Tentative:
+		b.Status = "tentative"
 	}
 	if base := s.configuredBaseURL(); base != "" {
 		b.URL = base + prodURL(p.ID, "/schedule")

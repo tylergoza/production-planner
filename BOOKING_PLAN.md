@@ -5,7 +5,7 @@ The cross-app design is in
 production planner's part. All of it works without the calendar. With the
 calendar connected, pencilled-in dates hold rooms there as `tentative`.
 
-Status: not started (planned 2026-10-13).
+Status: built (2026-10-13).
 
 ## The idea
 
@@ -33,19 +33,19 @@ request form.
 ## Steps
 
 ### 1. Pencilled-in dates
-- [ ] Migration `006_tentative_dates.sql`: `ALTER TABLE events ADD COLUMN tentative INTEGER NOT NULL DEFAULT 0`. Drop and recreate the `005` outbox update trigger on `events` so it also watches `tentative`
-- [ ] Date form (`web/templates/partials/forms.html`): **Pencilled in (not confirmed yet)** checkbox. Schedule page: a "Pencilled in" label on those dates, and **Confirm** per date plus **Confirm all pencilled-in dates** for the production
-- [ ] When adding several dates at once (if the schedule form does), one checkbox applies to all of them
-- [ ] `calendarBooking` (`internal/server/calendar_sync.go`): status `tentative` when the date is, `cancelled` when the production is cancelled, else `confirmed`. Update the status comment in `internal/calendar/calendar.go`
-- [ ] Public pages and `.ics` (if any list dates): pencilled-in dates labelled, `STATUS:TENTATIVE`
-- [ ] Room clash warnings (`internal/server/calendar_rooms.go`) show other apps' `tentative` / `pending` bookings with their label (they're already busy blocks)
-- [ ] Tests: push status per combination, outbox fires on confirm, confirm-all
+- [x] Migration `006_tentative_dates.sql`: `ALTER TABLE events ADD COLUMN tentative INTEGER NOT NULL DEFAULT 0`. Drop and recreate the `005` outbox update trigger on `events` so it also watches `tentative`
+- [x] Date form (`web/templates/partials/forms.html`): **Pencilled in (not confirmed yet)** checkbox. Schedule page: a "Pencilled in" label on those dates, and **Confirm** per date plus **Confirm all pencilled-in dates** for the production
+- [x] When adding several dates at once (if the schedule form does), one checkbox applies to all of them (it doesn't: one date at a time)
+- [x] `calendarBooking` (`internal/server/calendar_sync.go`): status `tentative` when the date is, `cancelled` when the production is cancelled, else `confirmed`. Update the status comment in `internal/calendar/calendar.go`
+- [x] Public pages and `.ics` (if any list dates): pencilled-in dates labelled, `STATUS:TENTATIVE` (this app has none; the dashboard and overview "Coming up" lists label them)
+- [x] Room clash warnings (`internal/server/calendar_rooms.go`) show other apps' `tentative` / `pending` bookings with their label (they're already busy blocks)
+- [x] Tests: push status per combination, outbox fires on confirm, confirm-all
 
 ### 2. Not scheduled yet
-- [ ] Dashboard and `/productions`: a **Not scheduled yet** group for active productions with no dates (today they sort as key "2"); a production whose dates are all pencilled in shows "Dates not confirmed"
-- [ ] A production moving to `rehearsing` or `ready` with no dates, or only pencilled-in performances, gets a warning on its page (not a refusal)
-- [ ] Tests: grouping and warnings
+- [x] Dashboard and `/productions`: a **Not scheduled yet** group for active productions with no dates (today they sort as key "2"); a production whose dates are all pencilled in shows "Dates not confirmed"
+- [x] A production moving to `rehearsing` or `ready` with no dates, or only pencilled-in performances, gets a warning on its page (not a refusal)
+- [x] Tests: grouping and warnings
 
 ### 3. Docs
-- [ ] README: the stages; `CALENDAR_PLAN.md`: the status rule now includes `tentative`
-- [ ] `.claude/CLAUDE.md`: "pencilled-in dates go to the calendar as `tentative`"
+- [x] README: the stages; `CALENDAR_PLAN.md`: the status rule now includes `tentative`
+- [x] `.claude/CLAUDE.md`: "pencilled-in dates go to the calendar as `tentative`"

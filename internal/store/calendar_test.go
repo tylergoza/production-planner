@@ -227,3 +227,39 @@ func TestRoomConflicts(t *testing.T) {
 		t.Fatalf("cancelled still clashes: %+v", got)
 	}
 }
+
+func TestConfirmDatesQueueAndScope(t *testing.T) {
+	st := openTest(t)
+	a, _ := st.CreateProduction(&Production{Title: "Musical"})
+	b, _ := st.CreateProduction(&Production{Title: "Drama"})
+	mk := func(pid int64, date string, tent bool) int64 {
+		id, err := st.CreateEvent(&Event{ProductionID: pid, Kind: "rehearsal", Date: date, Tentative: tent}, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return id
+	}
+	t1, t2, firm, other := mk(a, "2026-11-01", true), mk(a, "2026-11-02", true), mk(a, "2026-11-03", false), mk(b, "2026-11-04", true)
+
+	clearOutbox(t, st)
+	if err := st.ConfirmEvent(t1); err != nil {
+		t.Fatal(err)
+	}
+	if ops, _ := outbox(t, st); len(ops) != 1 || ops[t1] != "put" {
+		t.Fatalf("confirm queued %v", ops)
+	}
+	clearOutbox(t, st)
+	n, err := st.ConfirmAllEvents(a)
+	if err != nil || n != 1 {
+		t.Fatalf("confirm all: %d %v", n, err)
+	}
+	if ops, _ := outbox(t, st); len(ops) != 1 || ops[t2] != "put" || ops[firm] != "" {
+		t.Fatalf("confirm all queued %v", ops)
+	}
+	if e, _ := st.GetEvent(other); !e.Tentative {
+		t.Error("other production's date was touched")
+	}
+	if n, _ := st.ConfirmAllEvents(a); n != 0 {
+		t.Errorf("second run confirmed %d", n)
+	}
+}

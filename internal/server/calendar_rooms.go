@@ -65,6 +65,7 @@ type clash struct {
 	EventID int64  // one of our own dates, linked
 	When    string
 	Rooms   string
+	Status  string // "tentative" or "pending"; empty when firm
 }
 
 func clockShort(t string) (string, string) {
@@ -125,7 +126,7 @@ func sourceLabel(src string) string {
 }
 
 func newClash(b calendar.Block, showDate bool) clash {
-	c := clash{Busy: b.Busy, When: blockWhen(b, showDate), Rooms: strings.Join(b.Rooms, ", ")}
+	c := clash{Busy: b.Busy, When: blockWhen(b, showDate), Rooms: strings.Join(b.Rooms, ", "), Status: b.Status}
 	if b.Busy {
 		return c
 	}

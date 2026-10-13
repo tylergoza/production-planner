@@ -193,3 +193,53 @@ func TestSummary(t *testing.T) {
 		t.Errorf("percent: %d", sum.Prep.Percent())
 	}
 }
+
+func TestSummaryStages(t *testing.T) {
+	st := openTest(t)
+	u := &User{IsAdmin: true}
+	mk := func(title, status string, evs ...Event) int64 {
+		id, err := st.CreateProduction(&Production{Title: title, Status: status})
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, e := range evs {
+			e.ProductionID = id
+			if _, err := st.CreateEvent(&e, nil); err != nil {
+				t.Fatal(err)
+			}
+		}
+		return id
+	}
+	mk("Done", "done", Event{Kind: "performance", Date: "2026-03-01"})
+	mk("Empty", "planning")
+	mk("Pencilled", "rehearsing", Event{Kind: "performance", Date: "2026-06-01", Tentative: true}, Event{Kind: "rehearsal", Date: "2026-05-01", Tentative: true})
+	mk("Mixed", "ready", Event{Kind: "performance", Date: "2026-04-01"}, Event{Kind: "rehearsal", Date: "2026-03-20", Tentative: true})
+
+	list, err := st.ListProductions(u, false, "2026-01-01")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var titles []string
+	for _, p := range list {
+		titles = append(titles, p.Title)
+	}
+	if want := "Mixed Pencilled Empty Done"; strings.Join(titles, " ") != want {
+		t.Fatalf("order %v, want %s", titles, want)
+	}
+	by := map[string]ProductionSummary{}
+	for _, p := range list {
+		by[p.Title] = p
+	}
+	if e := by["Empty"]; !e.NotScheduled() || e.Unconfirmed() || e.Dates != 0 {
+		t.Errorf("empty: %+v", e)
+	}
+	if p := by["Pencilled"]; p.NotScheduled() || !p.Unconfirmed() || p.Dates != 2 || p.Tentative != 2 || p.ConfirmedShows != 0 {
+		t.Errorf("pencilled: %+v", p)
+	}
+	if m := by["Mixed"]; m.Unconfirmed() || m.Dates != 2 || m.Tentative != 1 || m.ConfirmedShows != 1 {
+		t.Errorf("mixed: %+v", m)
+	}
+	if by["Empty"].NeedsDatesWarning() != "" || by["Pencilled"].NeedsDatesWarning() == "" || by["Mixed"].NeedsDatesWarning() != "" {
+		t.Error("unexpected dates warnings")
+	}
+}

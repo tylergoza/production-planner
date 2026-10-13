@@ -32,7 +32,7 @@ port 8090, so the maintenance tracker (8080) can run alongside it.
 |------|--------------|
 | Dashboard | Each production in the works: its next date, how much is ready, needs gathered, and mic chart version. Then every date coming up. |
 | Productions | Title, kind, where, director, notes, and a status (Planning, Rehearsing, Ready, Done, Cancelled). Done and cancelled ones leave the dashboard but are kept. The overview flags readiness items that need help or are past due, and lists what's still needed. |
-| Schedule | Rehearsals, tech, dress and performances, with start and end times, rooms and notes. A new date starts with the production's usual rooms (picked from the tracker's places, or typed in). Two dates wanting the same room at the same time get a **Double-booked** warning, never a refusal. |
+| Schedule | Rehearsals, tech, dress and performances, with start and end times, rooms and notes. A date can be **pencilled in** (held, not confirmed yet) and confirmed later, one at a time or all at once; see [Not scheduled, pencilled in, scheduled](#not-scheduled-pencilled-in-scheduled). A new date starts with the production's usual rooms (picked from the tracker's places, or typed in). Two dates wanting the same room at the same time get a **Double-booked** warning, never a refusal. |
 | Cast & scenes | Characters (or parts like "Choir left") and who plays them, and the scenes in running order. Add one at a time or paste a list (`Mary - Ava Brooks`, or two columns from a spreadsheet). |
 | Mic chart | Mics down, scenes across, who has each mic in each scene. The editor carries a choice forward to the following scenes, since actors usually keep a mic for a while. The chart shades **swaps** (a mic changing hands), flags anyone on **two mics** in one scene, lists the swaps going into each scene for the mic wrangler, and lists each person's mics and scenes. Prints landscape. |
 | Final versions | **Mark final** saves the chart as v1, v2, and so on. Each version is kept and viewable, with what changed from the one before. The current chart shows *Draft*, *Final v2*, or *Changed since v2* with the changed cells outlined (hover to see what they were), so you know when the printed copy is out of date. |
@@ -43,6 +43,28 @@ port 8090, so the maintenance tracker (8080) can run alongside it.
 | Users | Admins manage users, settings and connections and can download a backup. Everything needs sign-in: cast lists aren't public. |
 | Church calendar | Optional. Every date goes onto the church calendar (see [Works alone](#works-alone-or-with-the-other-church-apps)). |
 | Access | A production is open to everyone signed in, or locked by an admin to a list of people (under **Edit details**). Others don't see a locked production at all; admins see every production. |
+
+## Not scheduled, pencilled in, scheduled
+
+A production goes through three stages on its way to the calendar, separate
+from its status (Planning, Rehearsing, …):
+
+| Stage | Dates | On the church calendar |
+|-------|-------|------------------------|
+| **Not scheduled yet** | None | Nothing sent |
+| **Pencilled in** | Dates marked *Pencilled in (not confirmed yet)* | Sent as `tentative`: the rooms are held, shown as "Pencilled in" |
+| **Scheduled** | Confirmed dates | Sent as `confirmed` |
+
+Pencilled in is per date, so a confirmed run of performances can have
+still-pencilled extra rehearsals. Productions with no dates have their own
+**Not scheduled yet** group on the dashboard; one whose dates are all
+pencilled in shows "Dates not confirmed". A production set to Rehearsing or
+Ready with no dates, or only pencilled-in performances, gets a warning on
+its page (it's still saved). All of this works without the calendar.
+
+Rooms for productions and dates come from every tracker building, room and
+area, whether or not the tracker marks it bookable (that flag is only for
+the calendar's public request form).
 
 ## Works alone, or with the other church apps
 
@@ -99,8 +121,9 @@ can't both have the Lifecenter without someone being told.
 
 What's sent for each date: "{production}: {label or kind}" (e.g.
 "Christmas Musical: Dress rehearsal"), the kind, the times, the rooms, a
-link to the production's schedule (when `BASE_URL` is set), and whether it's
-cancelled (the whole production is). Performances of a production marked
+link to the production's schedule (when `BASE_URL` is set), and a status:
+`cancelled` when the whole production is, `tentative` when the date is
+pencilled in, otherwise `confirmed`. Performances of a production marked
 **Public** are public on the calendar, with the production's "About it" as
 their description; rehearsals, tech and dress are always private. A locked
 production's dates are sent with no title, kind or description, only rooms
@@ -119,7 +142,8 @@ calendar.
 
 Room warnings on the schedule come from the calendar while it's connected
 (bookings from every app; other apps' private ones show as "Booked ·
-2:00–4:00 pm"). If it can't be reached, the schedule falls back to this
+2:00–4:00 pm"), with pencilled-in and pending-approval bookings marked as
+such. If it can't be reached, the schedule falls back to this
 app's own check and says so.
 
 ## Connections

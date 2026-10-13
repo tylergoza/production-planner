@@ -159,6 +159,32 @@ type ProductionSummary struct {
 	Scenes     int
 	Cast       int
 	Mics       int
+	Dates      int // all dates
+	Tentative  int // dates still pencilled in
+	// ConfirmedShows counts performances that aren't pencilled in.
+	ConfirmedShows int
+}
+
+// NotScheduled is true when there are no dates at all.
+func (p ProductionSummary) NotScheduled() bool { return p.Dates == 0 }
+
+// Unconfirmed is true when there are dates but every one is pencilled in.
+func (p ProductionSummary) Unconfirmed() bool { return p.Dates > 0 && p.Tentative == p.Dates }
+
+// NeedsDatesWarning says what's missing when a production that is
+// rehearsing or ready lacks dates or a confirmed performance: "" if fine.
+func (p ProductionSummary) NeedsDatesWarning() string {
+	if p.Status != "rehearsing" && p.Status != "ready" {
+		return ""
+	}
+	label := ProductionStatusLabel(p.Status)
+	switch {
+	case p.Dates == 0:
+		return "This is marked " + label + " but has no dates yet."
+	case p.ConfirmedShows == 0:
+		return "This is marked " + label + " but has no confirmed performance (its performances are only pencilled in, or there are none)."
+	}
+	return ""
 }
 
 // Tally counts how many of something are done.
@@ -222,9 +248,12 @@ func (s *Store) summarize(sum *ProductionSummary, today string) error {
 		COALESCE((SELECT MAX(version) FROM mic_chart_versions WHERE production_id = ?1), 0),
 		(SELECT COUNT(*) FROM scenes WHERE production_id = ?1),
 		(SELECT COUNT(*) FROM cast_members WHERE production_id = ?1),
-		(SELECT COUNT(*) FROM mics WHERE production_id = ?1)`, id).
+		(SELECT COUNT(*) FROM mics WHERE production_id = ?1),
+		(SELECT COUNT(*) FROM events WHERE production_id = ?1),
+		(SELECT COUNT(*) FROM events WHERE production_id = ?1 AND tentative = 1),
+		(SELECT COUNT(*) FROM events WHERE production_id = ?1 AND kind = 'performance' AND tentative = 0)`, id).
 		Scan(&sum.FirstDate, &sum.LastDate, &sum.Prep.Done, &sum.Prep.Total, &sum.Needs.Done, &sum.Needs.Total,
-			&sum.MicVersion, &sum.Scenes, &sum.Cast, &sum.Mics)
+			&sum.MicVersion, &sum.Scenes, &sum.Cast, &sum.Mics, &sum.Dates, &sum.Tentative, &sum.ConfirmedShows)
 	if err != nil {
 		return err
 	}
@@ -272,6 +301,8 @@ type Event struct {
 	EndTime      string // "" means until done
 	Label        string
 	Notes        string
+	// Tentative dates are pencilled in: held, but not confirmed yet.
+	Tentative bool
 }
 
 // When is the date and time for display, e.g. "Sun, Dec 14, 2026 · 6:00 PM"
@@ -340,11 +371,11 @@ func (e Event) Title() string {
 	return EventKindLabel(e.Kind)
 }
 
-const eventCols = `id, production_id, kind, date, time, end_time, label, notes`
+const eventCols = `id, production_id, kind, date, time, end_time, label, notes, tentative`
 
 func scanEvent(sc interface{ Scan(...any) error }) (Event, error) {
 	var e Event
-	err := sc.Scan(&e.ID, &e.ProductionID, &e.Kind, &e.Date, &e.Time, &e.EndTime, &e.Label, &e.Notes)
+	err := sc.Scan(&e.ID, &e.ProductionID, &e.Kind, &e.Date, &e.Time, &e.EndTime, &e.Label, &e.Notes, &e.Tentative)
 	return e, err
 }
 
@@ -374,7 +405,7 @@ type UpcomingEvent struct {
 
 func (s *Store) UpcomingEvents(u *User, today string, limit int) ([]UpcomingEvent, error) {
 	cond, args := visibleTo(u)
-	rows, err := s.DB.Query(`SELECT e.id, e.production_id, e.kind, e.date, e.time, e.end_time, e.label, e.notes, p.title
+	rows, err := s.DB.Query(`SELECT e.id, e.production_id, e.kind, e.date, e.time, e.end_time, e.label, e.notes, e.tentative, p.title
 		FROM events e JOIN productions p ON p.id = e.production_id
 		WHERE e.date >= ? AND p.status NOT IN ('done', 'cancelled') AND `+cond+`
 		ORDER BY e.date, e.time, e.id LIMIT ?`, append(append([]any{today}, args...), limit)...)
@@ -385,7 +416,7 @@ func (s *Store) UpcomingEvents(u *User, today string, limit int) ([]UpcomingEven
 	var out []UpcomingEvent
 	for rows.Next() {
 		var e UpcomingEvent
-		if err := rows.Scan(&e.ID, &e.ProductionID, &e.Kind, &e.Date, &e.Time, &e.EndTime, &e.Label, &e.Notes, &e.ProductionTitle); err != nil {
+		if err := rows.Scan(&e.ID, &e.ProductionID, &e.Kind, &e.Date, &e.Time, &e.EndTime, &e.Label, &e.Notes, &e.Tentative, &e.ProductionTitle); err != nil {
 			return nil, err
 		}
 		out = append(out, e)
@@ -409,8 +440,8 @@ func (s *Store) CreateEvent(e *Event, rooms []Room) (int64, error) {
 		return 0, err
 	}
 	defer tx.Rollback()
-	res, err := tx.Exec(`INSERT INTO events (production_id, kind, date, time, end_time, label, notes) VALUES (?, ?, ?, ?, ?, ?, ?)`,
-		e.ProductionID, e.Kind, e.Date, e.Time, e.EndTime, strings.TrimSpace(e.Label), e.Notes)
+	res, err := tx.Exec(`INSERT INTO events (production_id, kind, date, time, end_time, label, notes, tentative) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+		e.ProductionID, e.Kind, e.Date, e.Time, e.EndTime, strings.TrimSpace(e.Label), e.Notes, e.Tentative)
 	if err != nil {
 		return 0, err
 	}
@@ -431,14 +462,30 @@ func (s *Store) UpdateEvent(e *Event, rooms []Room) error {
 		return err
 	}
 	defer tx.Rollback()
-	if _, err := tx.Exec(`UPDATE events SET kind = ?, date = ?, time = ?, end_time = ?, label = ?, notes = ? WHERE id = ?`,
-		e.Kind, e.Date, e.Time, e.EndTime, strings.TrimSpace(e.Label), e.Notes, e.ID); err != nil {
+	if _, err := tx.Exec(`UPDATE events SET kind = ?, date = ?, time = ?, end_time = ?, label = ?, notes = ?, tentative = ? WHERE id = ?`,
+		e.Kind, e.Date, e.Time, e.EndTime, strings.TrimSpace(e.Label), e.Notes, e.Tentative, e.ID); err != nil {
 		return err
 	}
 	if err := setEventRooms(tx, e.ID, rooms); err != nil {
 		return err
 	}
 	return tx.Commit()
+}
+
+// ConfirmEvent confirms one pencilled-in date.
+func (s *Store) ConfirmEvent(id int64) error {
+	_, err := s.DB.Exec(`UPDATE events SET tentative = 0 WHERE id = ? AND tentative = 1`, id)
+	return err
+}
+
+// ConfirmAllEvents confirms every pencilled-in date of a production and
+// says how many there were.
+func (s *Store) ConfirmAllEvents(productionID int64) (int64, error) {
+	res, err := s.DB.Exec(`UPDATE events SET tentative = 0 WHERE production_id = ? AND tentative = 1`, productionID)
+	if err != nil {
+		return 0, err
+	}
+	return res.RowsAffected()
 }
 
 func (s *Store) DeleteEvent(id int64) error {

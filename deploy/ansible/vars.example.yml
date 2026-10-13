@@ -45,8 +45,9 @@ droplet_name: maintenance-tracker
 # calendar_internal_url: http://127.0.0.1:8120
 
 # Single sign-on through User Management (secret from UM_PLANNER_SECRET in
-# the environment). Leave sso_url unset for the planner's own passwords;
-# unset it and redeploy to turn SSO back off. Break-glass if User Management
+# the environment). Leave sso_url unset to manage SSO on /admin/connections
+# (or to keep the planner's own passwords). Setting it here locks SSO on that
+# page; unset it and redeploy to hand it back. Break-glass if User Management
 # is down: `local-login on` on the droplet (README: Single sign-on).
 # sso_url: https://accounts.example.org
 # base_url: https://productions.example.org   # sign-in returns to base_url/auth/callback

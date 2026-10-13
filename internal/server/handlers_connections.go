@@ -35,6 +35,12 @@ type connView struct {
 	Match, Differ      bool     // env only: settings equal / differ from the server's values
 	CanKeep            bool     // env only: settings can be filled from the server's values
 	Errors             []string // from the last save
+
+	// Single sign-on only.
+	IsSSO      bool
+	Pending    bool // new values wait for a test sign-in; the fields show them
+	CanTurnOff bool // SSO is live from settings
+	CanRemove  bool // secrets get a Remove box
 }
 
 func secretTail(v string) string {
@@ -60,6 +66,17 @@ func (s *Server) connViews(postedName string, posted url.Values, errs []string) 
 			v.SourceLabel = "Not connected"
 		}
 		v.Unreadable = cur.Err != nil
+		v.CanRemove = c != connSSO
+		if c == connSSO {
+			v.IsSSO = true
+			v.CanTurnOff = cur.Source == sourceSettings && cur.Get("sso_url") != ""
+			if cur.Source != sourceEnv {
+				if pv, ok := s.pendingSSO(); ok {
+					v.Pending = true
+					cur = pv
+				}
+			}
+		}
 		if by := s.store.Setting("conn_"+c.Name+"_changed_by", ""); by != "" {
 			v.ChangedBy = by
 			if t, err := time.Parse(time.RFC3339, s.store.Setting("conn_"+c.Name+"_changed_at", "")); err == nil {

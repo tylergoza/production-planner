@@ -75,8 +75,9 @@ calendar_url: ""
 calendar_internal_url: ""
 calendar_token: "{{ lookup('env', 'PP_CALENDAR_TOKEN') }}"
 
-# Single sign-on through User Management. Empty sso_url keeps the planner's
-# own password login. To turn SSO on, set sso_url and base_url in vars.yml,
+# Single sign-on through User Management. Empty sso_url leaves it to the
+# app's Connections page (off until an admin sets it up there). To set SSO
+# from here instead, set sso_url and base_url in vars.yml,
 # pass the client secret in the environment, and redeploy:
 #   export UM_PLANNER_SECRET=...   # printed by User Management's import-users playbook
 # To turn it back off, unset sso_url and redeploy. If User Management breaks

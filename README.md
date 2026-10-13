@@ -103,7 +103,7 @@ app's own check and says so.
 
 ## Connections
 
-The maintenance tracker and the church calendar are set on
+The maintenance tracker, single sign-on and the church calendar are set on
 **/admin/connections** (admins only), or on the server with environment
 variables. A connection with **any** of its variables set comes wholly from
 the environment: the page shows it as *Set on the server* and can't change
@@ -114,9 +114,10 @@ the app makes next to the database on first start; keep the two together.
 To hand a server-set connection over to the app: press **Keep in settings**
 (the page then says the settings match), blank the variables on the server
 and restart. Nothing disconnects. If a saved connection is ever the problem,
-`production-planner connection clear tracker|calendar` forgets it.
+`production-planner connection clear sso|tracker|calendar` forgets it.
 
-Single sign-on is still set on the server only (below).
+Single sign-on saves differently, so a typo can't lock admins out: see
+*Setting it up on the Connections page* under Single sign-on.
 
 ## Configuration
 
@@ -131,10 +132,10 @@ Set with a flag or an environment variable. Flags go **before** any command.
 | `DEV=1` | `-dev` | off | Load templates/static from `./web` on disk |
 | `TRACKER_URL`, `TRACKER_TOKEN` | | | The maintenance tracker connection. When either is set, the whole connection comes from here and can't be changed on Connections. |
 | `CALENDAR_URL`, `CALENDAR_INTERNAL_URL`, `CALENDAR_TOKEN` | | | The church calendar connection: its public address, an optional server-to-server address (`http://127.0.0.1:8120` on the shared droplet), and a `cal_…` source token for `productions`. Same whole-connection rule. |
-| `SSO_URL` | | | User Management's public address (e.g. `https://accounts.example.org`). Set it to sign in there instead of with local passwords; empty keeps the local login. |
+| `SSO_URL` | | | User Management's public address (e.g. `https://accounts.example.org`). Set it to sign in there instead of with local passwords. With all the SSO variables (and `BASE_URL`) empty, single sign-on is whatever was saved on Connections. |
 | `SSO_INTERNAL_URL` | | `SSO_URL` | User Management for server-to-server calls, e.g. `http://127.0.0.1:8100` on the shared droplet |
 | `SSO_CLIENT_ID`, `SSO_CLIENT_SECRET` | | | From registering this app in User Management (shown once). Required when `SSO_URL` is set; the app won't start without them. |
-| `BASE_URL` | | from the request | This app's public address, e.g. `https://plan.example.org`. The sign-in redirect URI is `BASE_URL/auth/callback` and must be registered exactly like that in User Management. Also the link the calendar gets back to each production. |
+| `BASE_URL` | | from the request | This app's public address, e.g. `https://plan.example.org`. The sign-in redirect URI is `BASE_URL/auth/callback` and must be registered exactly like that in User Management. Also the link the calendar gets back to each production. Part of the single sign-on connection: setting it alone puts that connection on the server (and so off). |
 
 ## Commands
 
@@ -142,7 +143,7 @@ Set with a flag or an environment variable. Flags go **before** any command.
 production-planner create-user alice [--admin]   # prompts for a password (10+ characters)
 production-planner reset-password alice           # also gives SSO users a local password, and turns them back on
 production-planner local-login on|off             # break-glass, see below
-production-planner connection clear tracker|calendar   # forget a saved connection
+production-planner connection clear sso|tracker|calendar   # forget a saved connection
 production-planner backup /path/backup.db        # safe while the app is running
 production-planner seed-demo                     # a sample production
 ```
@@ -167,6 +168,36 @@ Management (the `user_management` repo) instead of a password here:
    their last good check, so restarting it signs no one out.
 4. Signing out here also signs out of User Management, and so of the
    other apps within 5 minutes.
+
+**Setting it up (or changing it) on the Connections page.** Single sign-on
+can also be saved in the app instead of `SSO_URL` and friends. A wrong
+setting could lock every admin out, so saving never switches it on:
+
+1. Admin › Connections › Single sign-on: fill in the User Management
+   address, optional internal address, client ID, client secret and this
+   app's address, and **Save**. The values are stored as *pending* (the
+   secret encrypted) and sign-in doesn't change. A blank secret keeps the
+   current one.
+2. Press **Test sign-in**. The app first checks the client ID and secret
+   with User Management server to server, then sends you through User
+   Management and back. Only if that works **and** you come back as an
+   `admin` of this app does the pending set become live; your local
+   account is linked to your church account like the first rollout does.
+   Otherwise the page says why (for example "you signed in as X, who isn't
+   an admin of this app in User Management"), the old setting stays and the
+   pending values wait. You stay signed in here either way. **Discard**
+   drops the pending values.
+3. **Turn off single sign-on** (after a confirm) goes back to local
+   passwords. Anyone who only ever signed in through User Management has
+   none; set one with `production-planner reset-password USERNAME`.
+4. Values set in the environment are shown read-only; **Keep in settings**
+   copies them over, as for the other connections.
+
+Break-glass if a bad saved setting still gets in the way:
+`production-planner local-login on` brings the password form back, and
+`production-planner connection clear sso` removes the saved settings, pending
+ones included. A broken saved setting falls back to local login with a
+banner for admins; broken environment values still stop the app at start.
 
 `/setup` is gone and `/account` links to User Management's account page.
 Production members and other planner permissions stay in this app.
@@ -270,7 +301,10 @@ app makes a new one and the saved tokens have to be entered again.
 
 #### Turning on single sign-on
 
-SSO stays off until `sso_url` is set (see Single sign-on above). Once User
+This is the server-side way; you can instead leave `sso_url` blank and set
+SSO up on `/admin/connections` (see Single sign-on above), or set it here
+first and hand it over with **Keep in settings** like the other
+connections. To set it here: once User
 Management is deployed on the same droplet and its import-users playbook has
 printed the planner's client secret:
 
@@ -286,7 +320,8 @@ make deploy
 The deploy stops before building if `sso_url` is set without the secret or
 `base_url`, so keep `UM_PLANNER_SECRET` exported for every deploy while SSO
 is on. The secret goes only into the root-only systemd drop-in, with
-nothing logged. To turn SSO back off, remove `sso_url` and deploy again. If
+nothing logged. To turn SSO back off (or hand it to the Connections page),
+remove `sso_url` and deploy again. If
 User Management is down, use the `local-login on` break-glass above instead.
 
 With a hardware SSH key, use a deploy key as described in the tracker's

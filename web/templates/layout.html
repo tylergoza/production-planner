@@ -62,6 +62,7 @@
   </div>
 
   <main id="main" class="container">
+    {{template "sso-banner" .SSOBroken}}
     {{with .Flash}}
       <div class="flash flash--{{.Kind}}" role="status" data-controller="flash" data-flash-timeout-value="6000">
         <span>{{.Message}}</span>

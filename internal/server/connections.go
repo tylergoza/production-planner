@@ -13,8 +13,7 @@ import (
 
 // Connections to other apps (see CONNECTIONS_PLAN.md). Each one comes as a
 // whole from the environment when any of its variables is set there,
-// otherwise from the settings an admin saved, otherwise it's off. Single
-// sign-on is still environment-only here (CONNECTIONS_PLAN.md step 3).
+// otherwise from the settings an admin saved, otherwise it's off.
 
 type connField struct {
 	Label  string
@@ -27,7 +26,7 @@ type connField struct {
 }
 
 type connection struct {
-	Name   string // "tracker", "calendar"
+	Name   string // "tracker", "sso", "calendar"
 	Title  string
 	Noun   string // "the calendar", for messages
 	Intro  string // what it's for and how to set it up, for the page
@@ -50,6 +49,15 @@ var (
 		},
 		Address: func(v resolvedConn) string { return v.Get("tracker_url") },
 	}
+	connSSO = &connection{Name: "sso", Title: "Single sign-on", Noun: "User Management",
+		Intro: "People sign in with their church account in User Management instead of a password here. In User Management an admin registers this app on its Apps page and gets a client ID and secret. Saving here only stores the values as pending: sign-in doesn't change until a test sign-in as an admin of this app works.",
+		Fields: []connField{
+			{Label: "User Management address", Env: "SSO_URL", Key: "sso_url", URL: true, Hint: "https://accounts.example.org"},
+			{Label: "Internal address", Env: "SSO_INTERNAL_URL", Key: "sso_internal_url", URL: true, Hint: "Optional, e.g. http://127.0.0.1:8100"},
+			{Label: "Client ID", Env: "SSO_CLIENT_ID", Key: "sso_client_id", Hint: "planner"},
+			{Label: "Client secret", Env: "SSO_CLIENT_SECRET", Key: "sso_client_secret", Secret: true},
+			{Label: "This app's address", Env: "BASE_URL", Key: "base_url", URL: true, Hint: "https://plan.example.org (the sign-in comes back here)"},
+		}}
 	connCalendar = &connection{Name: "calendar", Title: "Calendar", Noun: "the calendar",
 		Intro: "Send every rehearsal and performance, with its rooms, to the church calendar, and see room clashes with the other apps. On the calendar, an admin makes a source token for \"productions\" on its API tokens page and pastes it here.",
 		Fields: []connField{
@@ -62,8 +70,9 @@ var (
 		},
 		Address: func(v resolvedConn) string { return v.Get("calendar_url") },
 	}
-	// connections are the ones on /admin/connections, in order.
-	connections = []*connection{connTracker, connCalendar}
+	// connections are the ones on /admin/connections, in order. SSO has
+	// its own save, test and pending routes (handlers_sso_pending.go).
+	connections = []*connection{connTracker, connSSO, connCalendar}
 )
 
 // ConnectionEnv lists every environment variable a connection reads, for
@@ -79,19 +88,23 @@ func ConnectionEnv() []string {
 }
 
 // ConnectionKeys lists the settings a connection keeps, including the
-// record of who last changed it, for `connection clear`. nil if there's
-// no such connection.
-func ConnectionKeys(name string) []string {
+// record of who last changed it, for `connection clear`; prefix, when set,
+// clears every key starting with it too (SSO's pending values). keys is
+// nil if there's no such connection.
+func ConnectionKeys(name string) (keys []string, prefix string) {
 	for _, c := range connections {
 		if c.Name == name {
 			var out []string
 			for _, f := range c.Fields {
 				out = append(out, f.Key)
 			}
-			return append(out, "conn_"+name+"_changed_by", "conn_"+name+"_changed_at")
+			if c == connSSO {
+				prefix = ssoPendingPrefix
+			}
+			return append(out, "conn_"+name+"_changed_by", "conn_"+name+"_changed_at"), prefix
 		}
 	}
-	return nil
+	return nil, ""
 }
 
 type connSource string

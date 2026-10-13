@@ -185,3 +185,27 @@ func TestConnectionTestRefusedToken(t *testing.T) {
 		t.Error("test should connect")
 	}
 }
+
+func TestConnectionClearSSO(t *testing.T) {
+	// `connection clear sso` drops the live values and the pending ones.
+	_, st := newConnServer(t, nil)
+	st.SetSetting("sso_url", "https://accounts.example.org")
+	st.SetSetting("sso_pending_url", "https://new.example.org")
+	st.SetSetting("tracker_url", "https://tracker.example.org")
+	keys, prefix := ConnectionKeys("sso")
+	if prefix != ssoPendingPrefix {
+		t.Fatalf("prefix %q", prefix)
+	}
+	if _, err := st.ClearConnection(keys, prefix); err != nil {
+		t.Fatal(err)
+	}
+	if st.Setting("sso_url", "") != "" || st.Setting("sso_pending_url", "") != "" {
+		t.Fatal("sso settings left behind")
+	}
+	if st.Setting("tracker_url", "") == "" {
+		t.Fatal("cleared another connection")
+	}
+	if keys, _ := ConnectionKeys("nope"); keys != nil {
+		t.Fatal("unknown connection has keys")
+	}
+}

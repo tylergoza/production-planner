@@ -157,7 +157,7 @@ func (s *Server) calendarBooking(e *store.Event, p *store.Production, rooms []st
 	if p.Status == "cancelled" {
 		b.Status = "cancelled"
 	}
-	if base := s.cfg.BaseURL; base != "" {
+	if base := s.configuredBaseURL(); base != "" {
 		b.URL = base + prodURL(p.ID, "/schedule")
 	}
 	// The calendar keeps one row per room name.

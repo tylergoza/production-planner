@@ -3,7 +3,7 @@
 The design is in `../event_planning/CONNECTIONS_PLAN.md`; read it first.
 The event planner builds it first, so copy from there.
 
-Status: steps 1, 2, 4 and 5 built (2026-10-12) for the tracker and calendar. Step 3 (SSO) not done: SSO is still set on the server only.
+Status: all steps built. Steps 1, 2, 4 and 5 on 2026-10-12; step 3 (SSO) on 2026-10-13.
 
 Connections here: **Tracker** (already a setting with env override),
 **Single sign-on** and **Calendar**.
@@ -21,11 +21,11 @@ Connections here: **Tracker** (already a setting with env override),
 - [x] README **Connections** section
 
 ### 3. Single sign-on
-- [ ] SSO client behind `atomic.Pointer`
-- [ ] Pending values, **Test sign-in**, admin-role check, turn off with confirm
-- [ ] Saved-but-broken SSO falls back to local login with a banner
-- [ ] `production-planner connection clear sso|tracker|calendar` (tracker and calendar done; sso waits for step 3)
-- [ ] Tests as in the event planner
+- [x] SSO client behind `atomic.Pointer`
+- [x] Pending values, **Test sign-in**, admin-role check, turn off with confirm
+- [x] Saved-but-broken SSO falls back to local login with a banner
+- [x] `production-planner connection clear sso|tracker|calendar`
+- [x] Tests as in the event planner
 
 ### 4. Calendar
 - [x] Build `CALENDAR_PLAN.md` step 2's settings as this connection, not env-only

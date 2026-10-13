@@ -23,7 +23,7 @@ func (s *Server) handleLoginForm(w http.ResponseWriter, r *http.Request) {
 		s.handleSSOStart(w, r)
 		return
 	}
-	if n, _ := s.store.CountUsers(); n == 0 && !s.sso.Enabled() {
+	if n, _ := s.store.CountUsers(); n == 0 && !s.SSO().Enabled() {
 		http.Redirect(w, r, "/setup", http.StatusSeeOther)
 		return
 	}
@@ -31,7 +31,7 @@ func (s *Server) handleLoginForm(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, safeRedirect(r.URL.Query().Get("next")), http.StatusSeeOther)
 		return
 	}
-	s.render(w, r, http.StatusOK, "login", map[string]any{"Title": "Sign in", "Next": r.URL.Query().Get("next"), "SSO": s.sso.Enabled()})
+	s.render(w, r, http.StatusOK, "login", map[string]any{"Title": "Sign in", "Next": r.URL.Query().Get("next"), "SSO": s.SSO().Enabled()})
 }
 
 func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
@@ -43,7 +43,7 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 	}
 	fail := func(msg string) {
 		s.render(w, r, http.StatusUnauthorized, "login", map[string]any{
-			"Title": "Sign in", "Next": next, "Username": username, "Error": msg, "SSO": s.sso.Enabled(),
+			"Title": "Sign in", "Next": next, "Username": username, "Error": msg, "SSO": s.SSO().Enabled(),
 		})
 	}
 	if !s.limiter.allow(ip) {
@@ -92,9 +92,9 @@ func (s *Server) handleLogout(w http.ResponseWriter, r *http.Request) {
 	// Signing out of an SSO session signs out of User Management too
 	// (server to server, so there's no confirm page or logout CSRF there),
 	// and so out of the other apps on their next grant check.
-	if sess, _ := r.Context().Value(ctxSession).(*store.Session); sess != nil && sess.Grant != "" && s.sso.Enabled() {
+	if sess, _ := r.Context().Value(ctxSession).(*store.Session); sess != nil && sess.Grant != "" && s.SSO().Enabled() {
 		ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
-		if err := s.sso.Logout(ctx, sess.Grant); err != nil {
+		if err := s.SSO().Logout(ctx, sess.Grant); err != nil {
 			s.log.Warn("sign out of User Management failed", "user", sess.User.Username, "err", err)
 		}
 		cancel()
@@ -117,7 +117,7 @@ func (s *Server) handleLogout(w http.ResponseWriter, r *http.Request) {
 // first admin) come from User Management.
 
 func (s *Server) handleSetupForm(w http.ResponseWriter, r *http.Request) {
-	if s.sso.Enabled() {
+	if s.SSO().Enabled() {
 		s.notFound(w, r)
 		return
 	}
@@ -129,7 +129,7 @@ func (s *Server) handleSetupForm(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleSetup(w http.ResponseWriter, r *http.Request) {
-	if s.sso.Enabled() {
+	if s.SSO().Enabled() {
 		s.notFound(w, r)
 		return
 	}
@@ -193,8 +193,8 @@ func (s *Server) accountData(r *http.Request, errs []string) map[string]any {
 		"Errors":       errs,
 		"ShowPassword": !s.ssoSignIn() && s.store.HasPassword(currentUser(r).ID),
 	}
-	if s.sso.Enabled() {
-		data["SSOAccountURL"] = s.sso.PublicURL + "/account"
+	if s.SSO().Enabled() {
+		data["SSOAccountURL"] = s.SSO().PublicURL + "/account"
 	}
 	return data
 }
@@ -207,7 +207,7 @@ func (s *Server) handleAccountPassword(w http.ResponseWriter, r *http.Request) {
 	u := currentUser(r)
 	if !s.store.HasPassword(u.ID) {
 		msg := "Your account has no password in this app."
-		if s.sso.Enabled() {
+		if s.SSO().Enabled() {
 			msg += " Change your password in User Management."
 		}
 		s.render(w, r, http.StatusUnprocessableEntity, "account", s.accountData(r, []string{msg}))
@@ -240,7 +240,7 @@ func (s *Server) handleAccountPassword(w http.ResponseWriter, r *http.Request) {
 // local add/edit/delete pages are gone.
 
 func (s *Server) handleUsers(w http.ResponseWriter, r *http.Request) {
-	if s.sso.Enabled() {
+	if s.SSO().Enabled() {
 		s.handleSSOUsers(w, r)
 		return
 	}
@@ -253,7 +253,7 @@ func (s *Server) handleUsers(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleUserNew(w http.ResponseWriter, r *http.Request) {
-	if s.sso.Enabled() {
+	if s.SSO().Enabled() {
 		s.notFound(w, r)
 		return
 	}
@@ -261,7 +261,7 @@ func (s *Server) handleUserNew(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleUserCreate(w http.ResponseWriter, r *http.Request) {
-	if s.sso.Enabled() {
+	if s.SSO().Enabled() {
 		s.notFound(w, r)
 		return
 	}
@@ -285,7 +285,7 @@ func (s *Server) handleUserCreate(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleUserEdit(w http.ResponseWriter, r *http.Request) {
-	if s.sso.Enabled() {
+	if s.SSO().Enabled() {
 		s.notFound(w, r)
 		return
 	}
@@ -298,7 +298,7 @@ func (s *Server) handleUserEdit(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleUserUpdate(w http.ResponseWriter, r *http.Request) {
-	if s.sso.Enabled() {
+	if s.SSO().Enabled() {
 		s.notFound(w, r)
 		return
 	}
@@ -347,7 +347,7 @@ func (s *Server) handleUserUpdate(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleUserDelete(w http.ResponseWriter, r *http.Request) {
-	if s.sso.Enabled() {
+	if s.SSO().Enabled() {
 		s.notFound(w, r)
 		return
 	}

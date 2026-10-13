@@ -1,0 +1,8 @@
+{{/* Shown to admins when saved single sign-on settings were refused. Pass .SSOBroken. */}}
+{{define "sso-banner"}}
+  {{if .}}
+    <div class="flash flash--error" role="alert">
+      <span>Single sign-on settings are broken: {{.}}. People sign in with local passwords until it's fixed on <a href="/admin/connections">Connections</a>.</span>
+    </div>
+  {{end}}
+{{end}}

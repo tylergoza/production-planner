@@ -191,6 +191,24 @@ func (c *Client) Exchange(ctx context.Context, code, redirectURI, verifier strin
 	return out.Grant, &out.User, nil
 }
 
+// CheckClient asks User Management, server to server, whether it accepts
+// this client ID and secret, by trading a made-up code at the token
+// endpoint: a bad ID or secret is answered invalid_client, a good one
+// gets a refusal of the code itself. It returns an *APIError for
+// invalid_client (or an answer that isn't User Management's at all) and
+// an error wrapping ErrUnreachable when it can't be reached.
+func (c *Client) CheckClient(ctx context.Context) error {
+	_, _, err := c.Exchange(ctx, "check-client", c.PublicURL+"/auth/callback", "check-client")
+	var ae *APIError
+	if errors.As(err, &ae) {
+		if ae.Code == "invalid_client" || ae.Code == "" {
+			return ae
+		}
+		return nil
+	}
+	return err
+}
+
 // CheckGrant asks whether a grant is still good and who it's for now.
 // It returns ErrGrantRevoked when the service says invalid_grant (or a
 // 401/404 with no error code), and an error wrapping ErrUnreachable when

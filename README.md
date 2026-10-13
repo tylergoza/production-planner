@@ -41,8 +41,29 @@ port 8090, so the maintenance tracker (8080) can run alongside it.
 | Needs | Search the maintenance tracker's products and supplies and add how many you need. Each one shows how many the tracker has (on hand for supplies, with low/out flags) and **short by** when there aren't enough. Anything else is something to buy or borrow. Mark things Gathered, then Put back after the production. |
 | Offline | Installable as an app. The dashboard, a production's overview and its mic chart open from the last copy when there's no signal backstage. |
 | Users | Admins manage users, settings and connections and can download a backup. Everything needs sign-in: cast lists aren't public. |
-| Church calendar | Optional. With the calendar connected, every date goes onto the church calendar with its rooms, and room warnings cover the other apps too (see below). |
+| Church calendar | Optional. Every date goes onto the church calendar (see [Works alone](#works-alone-or-with-the-other-church-apps)). |
 | Access | A production is open to everyone signed in, or locked by an admin to a list of people (under **Edit details**). Others don't see a locked production at all; admins see every production. |
+
+## Works alone, or with the other church apps
+
+The planner runs fine by itself, with its own users.
+Rooms, needs and mics are typed in. The church apps are small on purpose,
+and you can connect the ones you want.
+A connection is off until you set it up on **/admin/connections** (or with
+environment variables), and while it's off the planner acts as if that app
+doesn't exist. Each app owns its own data. The planner keeps only an ID and
+a remembered name for what it borrows, so pages still open if the other app
+is down.
+
+| Connected app | What it adds | What this app keeps |
+|---------------|--------------|---------------------|
+| Nothing (alone) | Everything in Features above: productions, schedule, cast, mic chart and versions, readiness, local sign-in, backup. Rooms are typed in; needs and mics are typed in too. | All of it, in one SQLite file. |
+| [Maintenance tracker](#the-maintenance-tracker) | Pick rooms, products and supplies from the tracker; see how many it has and **short by** flags; bring in tracker units as mics. Read only. | The tracker's ID plus the name it had, on each need, mic and room. |
+| [Church calendar](#the-church-calendar) | Every date becomes a booking on the church calendar, and room warnings cover bookings from every app. | The dates themselves. The calendar holds a copy, with a link back when `BASE_URL` is set. |
+| [User Management](#single-sign-on) | Sign in with a church account instead of a local password; roles and access follow it. | A local user row linked by the User Management ID, so history stays. |
+
+Productions, dates, cast, mic charts and needs belong to the planner. No
+other app reads them, apart from the dates the calendar receives.
 
 ## The maintenance tracker
 

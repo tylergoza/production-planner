@@ -60,7 +60,16 @@ func (s *Server) handleDashboard(w http.ResponseWriter, r *http.Request) {
 		s.serverError(w, r, err)
 		return
 	}
-	s.render(w, r, http.StatusOK, "dashboard", map[string]any{"Productions": list, "Upcoming": upcoming, "Live": true})
+	// Active productions with no dates get their own group.
+	var scheduled, notScheduled []store.ProductionSummary
+	for _, p := range list {
+		if p.NotScheduled() {
+			notScheduled = append(notScheduled, p)
+		} else {
+			scheduled = append(scheduled, p)
+		}
+	}
+	s.render(w, r, http.StatusOK, "dashboard", map[string]any{"Productions": scheduled, "NotScheduled": notScheduled, "Upcoming": upcoming, "Live": true})
 }
 
 // Productions ------------------------------------------------------------
@@ -71,7 +80,16 @@ func (s *Server) handleProductions(w http.ResponseWriter, r *http.Request) {
 		s.serverError(w, r, err)
 		return
 	}
-	s.render(w, r, http.StatusOK, "productions/index", map[string]any{"Title": "Productions", "Productions": list})
+	// Active productions with no dates are listed in their own section.
+	var rest, notScheduled []store.ProductionSummary
+	for _, p := range list {
+		if p.Active() && p.NotScheduled() {
+			notScheduled = append(notScheduled, p)
+		} else {
+			rest = append(rest, p)
+		}
+	}
+	s.render(w, r, http.StatusOK, "productions/index", map[string]any{"Title": "Productions", "Productions": rest, "NotScheduled": notScheduled})
 }
 
 func (s *Server) productionForm(w http.ResponseWriter, r *http.Request, status int, p store.Production, members []int64, errs []string) {
@@ -213,7 +231,7 @@ func (s *Server) handleProductionShow(w http.ResponseWriter, r *http.Request) {
 	}
 	s.prodPage(w, r, http.StatusOK, "productions/show", p, "overview", map[string]any{
 		"Sum": sum, "Upcoming": upcoming, "Departments": store.GroupPrep(prep), "Attention": attention,
-		"StillNeeded": stillNeeded, "Chart": chart, "Live": true,
+		"StillNeeded": stillNeeded, "Chart": chart, "Live": true, "DatesWarning": sum.NeedsDatesWarning(),
 	})
 }
 
@@ -254,7 +272,13 @@ func (s *Server) handleProductionUpdate(w http.ResponseWriter, r *http.Request) 
 			return
 		}
 	}
-	s.redirect(w, r, prodURL(p.ID, ""), "Saved.")
+	msg := "Saved."
+	if sum, err := s.store.Summary(p, s.today()); err == nil {
+		if w := sum.NeedsDatesWarning(); w != "" {
+			msg += " " + w
+		}
+	}
+	s.redirect(w, r, prodURL(p.ID, ""), msg)
 }
 
 func (s *Server) handleProductionDelete(w http.ResponseWriter, r *http.Request) {
@@ -298,7 +322,11 @@ func (s *Server) scheduleData(r *http.Request, p *store.Production, form store.E
 	}
 	data := map[string]any{"Form": form, "Errors": errs, "Kinds": store.EventKinds, "ProdRooms": prodRooms}
 	rows := make([]scheduleRow, len(events))
+	tentative := 0
 	for i, e := range events {
+		if e.Tentative {
+			tentative++
+		}
 		rows[i] = scheduleRow{Event: e, Rooms: rooms[e.ID], Conflicts: conflicts[e.ID]}
 	}
 	// With the calendar set, it knows about every app's bookings, so its
@@ -320,6 +348,7 @@ func (s *Server) scheduleData(r *http.Request, p *store.Production, form store.E
 		}
 	}
 	data["Events"] = rows
+	data["TentativeCount"] = tentative
 	if form.Kind == "" {
 		form.Kind = "rehearsal"
 		data["Form"] = form
@@ -349,6 +378,7 @@ func readEvent(r *http.Request, e *store.Event) []string {
 	e.Kind, e.Date, e.Time = formStr(r, "kind"), formStr(r, "date"), formStr(r, "time")
 	e.EndTime = formStr(r, "end_time")
 	e.Label, e.Notes = formStr(r, "label"), formStr(r, "notes")
+	e.Tentative = formStr(r, "tentative") == "1"
 	var errs []string
 	if !slices.Contains(store.EventKinds, e.Kind) {
 		errs = append(errs, "Pick what kind of date it is.")
@@ -460,6 +490,37 @@ func (s *Server) handleEventUpdate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.redirect(w, r, prodURL(p.ID, "/schedule"), "Saved.")
+}
+
+func (s *Server) handleEventConfirm(w http.ResponseWriter, r *http.Request) {
+	e, p, ok := s.eventAndProduction(w, r)
+	if !ok {
+		return
+	}
+	if err := s.store.ConfirmEvent(e.ID); err != nil {
+		s.serverError(w, r, err)
+		return
+	}
+	s.redirect(w, r, prodURL(p.ID, "/schedule"), "Confirmed.")
+}
+
+func (s *Server) handleEventsConfirmAll(w http.ResponseWriter, r *http.Request) {
+	p, ok := s.production(w, r)
+	if !ok {
+		return
+	}
+	n, err := s.store.ConfirmAllEvents(p.ID)
+	if err != nil {
+		s.serverError(w, r, err)
+		return
+	}
+	msg := "No pencilled-in dates to confirm."
+	if n == 1 {
+		msg = "1 date confirmed."
+	} else if n > 1 {
+		msg = strconv.FormatInt(n, 10) + " dates confirmed."
+	}
+	s.redirect(w, r, prodURL(p.ID, "/schedule"), msg)
 }
 
 func (s *Server) handleEventDelete(w http.ResponseWriter, r *http.Request) {

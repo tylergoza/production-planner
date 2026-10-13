@@ -28,6 +28,7 @@
         <input id="room_other" name="room_other" placeholder="A room only this date uses">
       </div>
     </fieldset>
+    <label class="check"><input type="checkbox" name="tentative" value="1" {{if .Form.Tentative}}checked{{end}}> Pencilled in (not confirmed yet)</label>
     <div class="field">
       <label for="label">Label <span class="optional">optional</span></label>
       <input id="label" name="label" value="{{.Form.Label}}" placeholder="e.g. Sunday evening">

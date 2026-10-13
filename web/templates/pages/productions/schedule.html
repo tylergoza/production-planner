@@ -3,6 +3,12 @@
 <div class="two-col two-col--wide-left">
   <section>
     {{if .CalendarDown}}<p class="muted small">Couldn't reach the calendar, so only this app's dates were checked for room clashes.</p>{{end}}
+    {{if gt .TentativeCount 1}}
+    <form method="post" action="/productions/{{$p.ID}}/events/confirm" class="inline-form">
+      {{template "csrf" $.CSRF}}
+      <button type="submit" class="btn btn--sm">Confirm all pencilled-in dates</button>
+    </form>
+    {{end}}
     {{if .Events}}
     <div class="table-wrap">
       <table class="table table--stack">
@@ -11,7 +17,7 @@
           {{range .Events}}
             <tr class="{{if lt .Date today}}is-past{{end}}">
               <td data-label="When"><div>{{.When}}<br><span class="muted small">{{relDays .Date}}</span></div></td>
-              <td data-label="What"><span class="badge badge--event-{{.Kind}}">{{eventKindLabel .Kind}}</span>{{with .Label}} {{.}}{{end}}</td>
+              <td data-label="What"><span class="badge badge--event-{{.Kind}}">{{eventKindLabel .Kind}}</span>{{with .Label}} {{.}}{{end}}{{if .Tentative}} <span class="badge badge--tentative">Pencilled in</span>{{end}}</td>
               <td data-label="Rooms"><div class="small">{{range $i, $r := .Rooms}}{{if $i}}, {{end}}{{$r.PlaceName}}{{else}}<span class="muted">None</span>{{end}}</div>
                 {{if .Conflicts}}<div class="alert alert--error small" role="alert">Double-booked: also
                   {{range $i, $c := .Conflicts}}{{if $i}}; {{end}}<a href="/events/{{$c.EventID}}/edit">{{$c.ProductionTitle}}: {{$c.Title}}</a> in {{$c.Room}}{{end}}.</div>{{end}}
@@ -19,7 +25,9 @@
                   {{range $i, $c := .Clashes}}{{if $i}}; {{end}}{{template "clash" $c}}{{end}}.</div>{{end}}
               </td>
               <td data-label="Notes"><div class="small">{{range lines .Notes}}{{.}}<br>{{end}}</div></td>
-              <td class="actions"><a class="btn btn--ghost btn--sm" href="/events/{{.ID}}/edit">Edit</a></td>
+              <td class="actions">
+                {{if .Tentative}}<form method="post" action="/events/{{.ID}}/confirm" class="inline-form">{{template "csrf" $.CSRF}}<button type="submit" class="btn btn--sm">Confirm</button></form>{{end}}
+                <a class="btn btn--ghost btn--sm" href="/events/{{.ID}}/edit">Edit</a></td>
             </tr>
           {{end}}
         </tbody>

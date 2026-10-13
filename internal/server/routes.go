@@ -63,6 +63,8 @@ func (s *Server) routes() http.Handler {
 	auth("GET /events/{id}/edit", s.handleEventEdit)
 	auth("POST /events/{id}", s.handleEventUpdate)
 	auth("POST /events/{id}/delete", s.handleEventDelete)
+	auth("POST /events/{id}/confirm", s.handleEventConfirm)
+	auth("POST /productions/{id}/events/confirm", s.handleEventsConfirmAll)
 
 	auth("GET /productions/{id}/cast", s.handleCast)
 	auth("POST /productions/{id}/cast", s.handleCastCreate)

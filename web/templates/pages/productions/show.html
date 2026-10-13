@@ -1,5 +1,10 @@
 {{define "content"}}
 {{$p := .P}}{{$sum := .Sum}}
+{{with .DatesWarning}}
+<div class="card card--alert section">
+  <p>{{.}} <a href="/productions/{{$p.ID}}/schedule">Open the Schedule tab</a></p>
+</div>
+{{end}}
 <div class="stat-grid">
   <a class="stat" href="/productions/{{$p.ID}}/schedule">
     <span class="stat__label">Next up</span>
@@ -75,7 +80,7 @@
       {{if .Upcoming}}
         <ul class="event-list">
           {{range .Upcoming}}
-            <li><span class="badge badge--event-{{.Kind}}">{{.Title}}</span> {{.When}} <span class="muted small">({{relDays .Date}})</span></li>
+            <li><span class="badge badge--event-{{.Kind}}">{{.Title}}</span>{{if .Tentative}} <span class="badge badge--tentative">Pencilled in</span>{{end}} {{.When}} <span class="muted small">({{relDays .Date}})</span></li>
           {{end}}
         </ul>
       {{else}}

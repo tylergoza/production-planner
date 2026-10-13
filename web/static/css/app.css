@@ -269,7 +269,7 @@ details > summary { cursor: pointer; color: var(--muted); }
   background: var(--unscheduled-bg); color: var(--unscheduled);
 }
 .badge--alert, .badge--prep-blocked, .badge--chart-changed { background: var(--overdue-bg); color: var(--overdue); }
-.badge--warn, .badge--prep-in_progress, .badge--need-needed, .badge--chart-draft, .badge--prod-rehearsing { background: var(--due-soon-bg); color: var(--due-soon); }
+.badge--tentative, .badge--warn, .badge--prep-in_progress, .badge--need-needed, .badge--chart-draft, .badge--prod-rehearsing { background: var(--due-soon-bg); color: var(--due-soon); }
 .badge--prep-ready, .badge--need-gathered, .badge--chart-final, .badge--prod-ready { background: var(--upcoming-bg); color: var(--upcoming); }
 .badge--prod-planning, .badge--event-performance { background: var(--accent-bg); color: var(--primary); }
 .badge--event-dress, .badge--event-tech { background: var(--due-soon-bg); color: var(--due-soon); }

@@ -13,11 +13,11 @@ const fakePlaces = `{"places": [
   {"id": 1, "parent_id": null, "kind": "site", "number": "", "name": "Main Campus", "path": "Main Campus",
    "address": "", "notes": "", "tags": [], "also_in": []},
   {"id": 2, "parent_id": 1, "kind": "building", "number": "", "name": "Fellowship Hall", "path": "Main Campus › Fellowship Hall",
-   "address": "", "notes": "", "tags": ["event"], "also_in": []},
+   "address": "", "notes": "", "tags": ["event"], "also_in": [], "bookable": true},
   {"id": 3, "parent_id": 2, "kind": "floor", "number": "", "name": "Ground floor", "path": "Main Campus › Fellowship Hall › Ground floor",
    "address": "", "notes": "", "tags": [], "also_in": []},
   {"id": 4, "parent_id": 3, "kind": "room", "number": "104", "name": "Nursery", "path": "Main Campus › Fellowship Hall › Ground floor › 104 – Nursery",
-   "address": "", "notes": "", "tags": [], "also_in": []},
+   "address": "", "notes": "", "tags": [], "also_in": [], "bookable": false},
   {"id": 5, "parent_id": 3, "kind": "area", "number": "", "name": "Kitchen Pass-through", "path": "Main Campus › Fellowship Hall › Ground floor › Kitchen Pass-through",
    "address": "", "notes": "", "tags": [], "also_in": [4]},
   {"id": 6, "parent_id": 1, "kind": "room", "number": "201", "name": "Sanctuary", "path": "Main Campus › 201 – Sanctuary",
@@ -140,7 +140,9 @@ func TestRooms(t *testing.T) {
 		query string
 		want  []string
 	}{
-		// Empty query: buildings, rooms and areas only, not the site or floor.
+		// Empty query: buildings, rooms and areas only, not the site or
+		// floor. The tracker's bookable flag (here false for the Nursery)
+		// is only for the calendar's request form and never filters.
 		{"", []string{"Fellowship Hall", "Nursery", "Kitchen Pass-through", "Sanctuary"}},
 		// Matches name, case-insensitively.
 		{"NURSERY", []string{"Nursery"}},

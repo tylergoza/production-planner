@@ -4,10 +4,20 @@
   <div class="page-head__actions"><a class="btn btn--primary" href="/productions/new">New production</a></div>
 </div>
 
-{{if .Productions}}
+{{if or .Productions .NotScheduled}}
+  {{if .Productions}}
   <div class="card-grid">
     {{range .Productions}}{{template "production-card" .}}{{end}}
   </div>
+  {{end}}
+  {{if .NotScheduled}}
+  <section class="section">
+    <h2 class="section__title">Not scheduled yet</h2>
+    <div class="card-grid">
+      {{range .NotScheduled}}{{template "production-card" .}}{{end}}
+    </div>
+  </section>
+  {{end}}
 {{else}}
   <div class="empty">
     <h2>Nothing in the works</h2>
@@ -26,7 +36,7 @@
         {{range .Upcoming}}
           <tr>
             <td data-label="When"><div>{{.When}} <span class="muted small">({{relDays .Date}})</span></div></td>
-            <td data-label="What"><span class="badge badge--event-{{.Kind}}">{{.Title}}</span></td>
+            <td data-label="What"><span class="badge badge--event-{{.Kind}}">{{.Title}}</span>{{if .Tentative}} <span class="badge badge--tentative">Pencilled in</span>{{end}}</td>
             <td data-label="Production"><a href="/productions/{{.ProductionID}}">{{.ProductionTitle}}</a></td>
           </tr>
         {{end}}
@@ -46,9 +56,9 @@
     </div>
     {{with .Kind}}<p class="muted small">{{.}}</p>{{end}}
     {{with .NextEvent}}
-      <p class="prod-card__next"><strong>{{.Title}}</strong> {{relDays .Date}}<br><span class="muted small">{{.When}}</span></p>
+      <p class="prod-card__next"><strong>{{.Title}}</strong> {{relDays .Date}}<br><span class="muted small">{{.When}}</span>{{if $.Unconfirmed}}<br><span class="muted small">Dates not confirmed</span>{{end}}</p>
     {{else}}
-      <p class="muted small">{{if .LastDate}}Last date was {{fmtDate .LastDate}}{{else}}No dates yet{{end}}</p>
+      <p class="muted small">{{if .Unconfirmed}}Dates not confirmed{{else if .LastDate}}Last date was {{fmtDate .LastDate}}{{else}}Not scheduled yet{{end}}</p>
     {{end}}
     <dl class="prod-card__stats">
       <div><dt>Ready</dt><dd>{{.Prep.Done}} of {{.Prep.Total}}</dd></div>

@@ -61,7 +61,7 @@ type Room struct {
 
 // Booking is what's sent for one date. A locked production's dates go with
 // no title, kind or description. Visibility is "public", "private" or "locked";
-// Status "confirmed" or "cancelled".
+// Status "confirmed", "tentative" or "cancelled".
 type Booking struct {
 	Title       string `json:"title"`
 	Kind        string `json:"kind"`
@@ -89,6 +89,7 @@ type Block struct {
 	EndTime   string   `json:"end_time"`
 	Rooms     []string `json:"rooms"`
 	Busy      bool     `json:"busy"`
+	Status    string   `json:"status"` // "tentative", "pending"; empty when confirmed
 }
 
 // Ours reports whether the block is one of this app's dates.

@@ -251,7 +251,9 @@ func (c *Client) Place(ctx context.Context, id int64) (*Place, error) {
 
 // Rooms is the places something can be booked in (buildings, rooms and
 // areas) that match query, case-insensitively, against name, number or
-// path. An empty query returns all of them, in tree order.
+// path. An empty query returns all of them, in tree order. The tracker's
+// bookable flag is only for the calendar's request form: productions can
+// use any room, so it's never checked here.
 func (c *Client) Rooms(ctx context.Context, query string) ([]Place, error) {
 	places, err := c.Places(ctx)
 	if err != nil {

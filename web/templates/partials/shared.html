@@ -132,4 +132,5 @@
 {{end}}
 
 {{/* One calendar booking that shares a date's rooms. Pass a server.clash. */}}
-{{define "clash"}}{{if .Busy}}Booked · {{.When}}{{else}}{{if .EventID}}<a href="/events/{{.EventID}}/edit">{{.Title}}</a>{{else}}{{.Title}}{{end}} ({{.When}}{{with .Source}}, {{.}}{{end}}){{end}}{{end}}
+{{define "clash-status"}}{{if eq .Status "tentative"}}, pencilled in{{else if eq .Status "pending"}}, pending approval{{end}}{{end}}
+{{define "clash"}}{{if .Busy}}Booked · {{.When}}{{template "clash-status" .}}{{else}}{{if .EventID}}<a href="/events/{{.EventID}}/edit">{{.Title}}</a>{{else}}{{.Title}}{{end}} ({{.When}}{{with .Source}}, {{.}}{{end}}{{template "clash-status" .}}){{end}}{{end}}

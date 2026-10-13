@@ -45,7 +45,10 @@ productions send no title, kind or description. Never send notes, cast,
 mics or readiness.
 
 Changing a production's title, public flag, lock or status re-queues all
-its dates. A cancelled production sends its dates as cancelled. Deleting
+its dates. A cancelled production sends its dates as cancelled; otherwise a
+pencilled-in date (`events.tentative`, BOOKING_PLAN.md) is sent as
+`tentative` and the rest as `confirmed`. Pencilling in or confirming a date
+re-queues it. Deleting
 a production or a date sends `delete`.
 
 ## Steps

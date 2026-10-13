@@ -430,3 +430,42 @@ func TestLockedProductions(t *testing.T) {
 		t.Error("an open production is for everyone")
 	}
 }
+
+func TestNotScheduledAndDatesWarning(t *testing.T) {
+	c, st := newTestServer(t)
+	st.CreateUser("boss", "", "a long password", true)
+	boss := c.as("boss")
+
+	boss.post("/productions/new", "/productions", url.Values{"title": {"Empty Show"}, "status": {"planning"}}, 200)
+	boss.post("/productions/new", "/productions", url.Values{"title": {"Pencilled Show"}, "status": {"rehearsing"}}, 200)
+	boss.post("/productions/new", "/productions", url.Values{"title": {"Solid Show"}, "status": {"rehearsing"}}, 200)
+	if _, err := st.CreateEvent(&store.Event{ProductionID: 2, Kind: "performance", Date: "2099-12-20", Tentative: true}, nil); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := st.CreateEvent(&store.Event{ProductionID: 3, Kind: "performance", Date: "2099-12-21"}, nil); err != nil {
+		t.Fatal(err)
+	}
+
+	for _, path := range []string{"/", "/productions"} {
+		body := boss.get(path, 200)
+		if !strings.Contains(body, "Not scheduled yet") || !strings.Contains(body, "Dates not confirmed") {
+			t.Errorf("%s: expected the Not scheduled yet group and Dates not confirmed", path)
+		}
+	}
+
+	if body := boss.get("/productions/2", 200); !strings.Contains(body, "pencilled in") || !strings.Contains(body, "Rehearsing") {
+		t.Error("expected a warning for a rehearsing production with only pencilled-in performances")
+	}
+	if body := boss.get("/productions/3", 200); strings.Contains(body, "is marked") {
+		t.Error("no warning expected with a confirmed performance")
+	}
+	if body := boss.get("/productions/1", 200); strings.Contains(body, "is marked") {
+		t.Error("no warning expected while planning")
+	}
+
+	// Saving still works with no dates; the flash mentions it.
+	boss.post("/productions/1/edit", "/productions/1", url.Values{"title": {"Empty Show"}, "status": {"ready"}}, 200)
+	if body := boss.get("/productions/1", 200); !strings.Contains(body, "has no dates yet") {
+		t.Error("expected a no-dates warning once marked ready")
+	}
+}

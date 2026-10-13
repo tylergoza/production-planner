@@ -1,6 +1,7 @@
 # Tests and builds the Linux binary on this machine, then installs it, the
 # systemd unit and its Caddy site on every droplet tagged do_tag. The database
-# is backed up first whenever the binary changes (migrations run on start).
+# (and secrets.key beside it) is backed up first whenever the binary changes
+# (migrations run on start).
 #
 #   export DIGITALOCEAN_TOKEN=...
 #   ansible-playbook deploy.yml             # or `make deploy` from the repo root
@@ -90,11 +91,38 @@
         path: "{{ app_db }}"
       register: db
 
+    # secrets.key encrypts the saved tokens; it sits beside the database and is
+    # backed up with it (the app creates it on first start, so it may be missing).
+    - name: Check for the secrets key
+      ansible.builtin.stat:
+        path: "{{ app_data_dir }}/secrets.key"
+      register: secrets_key
+
+    - name: Decide whether to back up
+      ansible.builtin.set_fact:
+        needs_backup: "{{ db.stat.exists and old_binary.stat.checksum | default('') != new_binary.stat.checksum }}"
+
+    # One stem for both files, so a backup is always the .db and its .key together.
+    - name: Name the pre-deploy backup
+      ansible.builtin.set_fact:
+        backup_stem: "{{ app_backup_dir ~ '/pre-deploy-' ~ now(utc=true, fmt='%Y%m%dT%H%M%SZ') }}"
+      when: needs_backup
+
     - name: Back up the database
       ansible.builtin.command:
-        argv: "{{ planner + ['backup', app_backup_dir ~ '/pre-deploy-' ~ now(utc=true, fmt='%Y%m%dT%H%M%SZ') ~ '.db'] }}"
-      when: db.stat.exists and old_binary.stat.checksum | default('') != new_binary.stat.checksum
+        argv: "{{ planner + ['backup', backup_stem ~ '.db'] }}"
+      when: needs_backup
       changed_when: true
+
+    - name: Back up the secrets key
+      ansible.builtin.copy:
+        src: "{{ app_data_dir }}/secrets.key"
+        dest: "{{ backup_stem ~ '.key' }}"
+        remote_src: true
+        owner: planner
+        group: planner
+        mode: "0600"
+      when: needs_backup and secrets_key.stat.exists
 
     - name: Install the binary
       ansible.builtin.copy:
@@ -117,12 +145,12 @@
         mode: "0755"
 
     # The unit in the repo has a placeholder TZ; this overrides it. The
-    # tracker connection goes here too when it's set, which locks it in
-    # the app's Settings. So does single sign-on when sso_url is set
-    # (unset it and redeploy to turn SSO off; `local-login on` is the
-    # break-glass). Readable by root only: it holds the API token and the
-    # SSO client secret.
-    - name: Set the time zone, maintenance tracker connection and single sign-on
+    # tracker and calendar connections go here too when they're set, which
+    # locks them on the app's Connections page (blank them and redeploy to
+    # manage them there). So does single sign-on when sso_url is set (unset
+    # it and redeploy to turn SSO off; `local-login on` is the break-glass).
+    # Readable by root only: it holds the tokens and the SSO client secret.
+    - name: Set the time zone and the connections (tracker, calendar, single sign-on)
       ansible.builtin.copy:
         content: |
           [Service]
@@ -132,6 +160,15 @@
           {% endif %}
           {% if tracker_token %}
           Environment="TRACKER_TOKEN={{ tracker_token }}"
+          {% endif %}
+          {% if calendar_url %}
+          Environment="CALENDAR_URL={{ calendar_url }}"
+          {% endif %}
+          {% if calendar_internal_url %}
+          Environment="CALENDAR_INTERNAL_URL={{ calendar_internal_url }}"
+          {% endif %}
+          {% if calendar_token %}
+          Environment="CALENDAR_TOKEN={{ calendar_token }}"
           {% endif %}
           {% if sso_url %}
           Environment="SSO_URL={{ sso_url }}"
@@ -234,21 +271,31 @@
     - name: Find old pre-deploy backups
       ansible.builtin.find:
         paths: "{{ app_backup_dir }}"
-        patterns: pre-deploy-*.db
+        patterns: ["pre-deploy-*.db", "pre-deploy-*.key"]
       register: backups
 
+    # A backup is its .db and .key together: keep the newest {{ keep_backups }} .db
+    # files and every .key that goes with one of them. Anything else goes.
     - name: Remove all but the newest {{ keep_backups }}
+      vars:
+        newest_stems: "{{ (backups.files | selectattr('path', 'match', '.*\\.db$') | sort(attribute='mtime', reverse=true) | map(attribute='path') | map('regex_replace', '\\.db$', '') | list)[:keep_backups | int] }}"
+        kept_paths: "{{ (newest_stems | map('regex_replace', '$', '.db') | list) + (newest_stems | map('regex_replace', '$', '.key') | list) }}"
       ansible.builtin.file:
-        path: "{{ item.path }}"
+        path: "{{ item }}"
         state: absent
-      loop: "{{ (backups.files | sort(attribute='mtime', reverse=true))[keep_backups | int :] }}"
+      loop: "{{ backups.files | map(attribute='path') | difference(kept_paths) }}"
       loop_control:
-        label: "{{ item.path | basename }}"
+        label: "{{ item | basename }}"
 
+    # Warn about what's still unset: the app's Connections page takes those.
     - name: Done
+      vars:
+        unset_connections: >-
+          {{ (['maintenance tracker'] if not (tracker_url and tracker_token) else [])
+             + (['calendar'] if not (calendar_url and calendar_token) else []) }}
+        hint: "{{ (' Connect the ' ~ (unset_connections | join(' and ')) ~ ' on /admin/connections (or set it in vars.yml).') if unset_connections else '' }}"
       ansible.builtin.debug:
         msg: >-
-          {{ 'Running at https://' ~ app_domain ~ '. Sign in as ' ~ admin_username ~ ' with password '
-             ~ new_admin_password ~ ', change it, and connect the maintenance tracker under Settings'
-             ~ (' (already set from tracker_url/tracker_token)' if tracker_url and tracker_token else '') ~ '.'
-             if new_admin_password is defined else 'Deployed to https://' ~ app_domain ~ '.' }}
+          {{ ('Running at https://' ~ app_domain ~ '. Sign in as ' ~ admin_username ~ ' with password '
+             ~ new_admin_password ~ ', and change it.'
+             if new_admin_password is defined else 'Deployed to https://' ~ app_domain ~ '.') ~ hint }}

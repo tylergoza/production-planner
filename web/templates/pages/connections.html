@@ -1,0 +1,77 @@
+{{define "content"}}
+<div class="page-head"><div><h1>Connections</h1></div></div>
+<p class="hint">Links to the other church apps. A connection set on the server (environment variables) is used as a whole and can't be changed here; use <strong>Keep in settings</strong> to take it over.</p>
+
+{{range $c := .Conns}}
+<div class="card narrow" id="{{$c.Name}}">
+  <h2>{{$c.Title}} <span class="badge {{if $c.FromEnv}}badge--locked{{else if eq $c.SourceLabel "Set here"}}badge--prod-ready{{end}}">{{$c.SourceLabel}}</span></h2>
+  <p>{{$c.Intro}}</p>
+  {{if $c.ChangedBy}}<p class="hint">Last changed by {{$c.ChangedBy}}{{if $c.ChangedAt}} on {{$c.ChangedAt}}{{end}}.</p>{{end}}
+  {{template "errors" $c.Errors}}
+  {{if $c.Unreadable}}<p class="hint">Can't read the saved secret: enter it again.</p>{{end}}
+
+  <form method="post" action="/admin/connections/{{$c.Name}}" class="form">
+    {{template "csrf" $.CSRF}}
+    {{range $c.Fields}}
+      <div class="field">
+        <label for="{{.ID}}">{{.Label}}</label>
+        {{if .Secret}}
+          {{if $c.FromEnv}}
+            <input id="{{.ID}}" value="{{if .IsSet}}Set{{if .Tail}}, ends {{.Tail}}{{end}}{{else}}Not set{{end}}" disabled>
+          {{else}}
+            <input id="{{.ID}}" name="{{.Key}}" type="password" autocomplete="off" placeholder="{{if .IsSet}}Set{{if .Tail}}, ends {{.Tail}}{{end}}; paste a new one to replace it{{else}}Not set: {{.Hint}}{{end}}">
+            {{if .IsSet}}<label class="check small"><input type="checkbox" name="remove_{{.Key}}" value="1"> Remove</label>{{end}}
+          {{end}}
+        {{else if $c.FromEnv}}
+          <input id="{{.ID}}" value="{{.Value}}" disabled>
+        {{else}}
+          <input id="{{.ID}}" name="{{.Key}}" value="{{.Value}}" {{if .URL}}inputmode="url" {{end}}autocomplete="off" placeholder="{{.Hint}}">
+        {{end}}
+      </div>
+    {{end}}
+    {{if $c.FromEnv}}
+      {{if $c.Match}}
+        <p class="hint">Set on the server; settings match, so it's safe to remove from the server.</p>
+      {{else if $c.Differ}}
+        <p class="hint">Settings differ from the server's values; the server's win.</p>
+      {{else}}
+        <p class="hint">Set on the server, so it can't be changed here.</p>
+      {{end}}
+    {{else}}
+      <p class="hint">Saving checks the connection, and saves even if the check fails. Leave a token blank to keep the current one.</p>
+    {{end}}
+    <div class="form__actions">
+      {{if not $c.FromEnv}}<button type="submit" class="btn btn--primary">Save</button>{{end}}
+    </div>
+  </form>
+
+  <div class="form__actions">
+    <form method="post" action="/admin/connections/{{$c.Name}}/test">
+      {{template "csrf" $.CSRF}}
+      <button type="submit" class="btn">Test</button>
+    </form>
+    {{if and $c.FromEnv (not $c.Match)}}
+      <form method="post" action="/admin/connections/{{$c.Name}}/keep">
+        {{template "csrf" $.CSRF}}
+        <button type="submit" class="btn">Keep in settings</button>
+      </form>
+    {{end}}
+  </div>
+
+  {{if eq $c.Name "calendar"}}
+    <div data-controller="calendar-status" data-calendar-status-url-value="/admin/connections/calendar/status" data-calendar-status-waiting-value="{{$.Cal.Waiting}}">
+      <h3>Sending dates</h3>
+      <p>Waiting to send: <strong data-calendar-status-target="waiting">{{$.Cal.Waiting}}</strong></p>
+      <p>Last sent: <span data-calendar-status-target="sent">{{$.Cal.LastSent}}</span></p>
+      <p class="hint" data-calendar-status-target="error"{{if not $.Cal.LastError}} hidden{{end}}>{{if $.Cal.LastError}}Last error: {{$.Cal.LastError}}{{end}}</p>
+    </div>
+    {{if $.Cal.Configured}}
+      <form method="post" action="/admin/connections/calendar/backfill" data-controller="confirm" data-confirm-message-value="{{$.Cal.Message}}" data-action="submit->confirm#check">
+        {{template "csrf" $.CSRF}}
+        <button type="submit" class="btn">Send all dates to the calendar</button>
+      </form>
+    {{end}}
+  {{end}}
+</div>
+{{end}}
+{{end}}

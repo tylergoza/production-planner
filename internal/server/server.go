@@ -24,6 +24,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/tylergoza/production-planner/internal/calendar"
 	"github.com/tylergoza/production-planner/internal/sso"
 	"github.com/tylergoza/production-planner/internal/store"
 	"github.com/tylergoza/production-planner/internal/tracker"
@@ -38,10 +39,10 @@ type Config struct {
 	// proxy (Caddy, nginx, a DO load balancer) for client IP and HTTPS.
 	TrustProxy bool
 	SessionTTL time.Duration
-	// TrackerURL and TrackerToken, when set, override the maintenance
-	// tracker connection in Settings (e.g. from the environment).
-	TrackerURL   string
-	TrackerToken string
+	// Env holds the connection variables from the environment
+	// (ConnectionEnv); a connection with any of them set ignores its
+	// saved settings. See CONNECTIONS_PLAN.md.
+	Env map[string]string
 	// BaseURL is this app's public address (e.g. "https://plan.example.org"),
 	// used for the SSO redirect URI. Worked out from each request if empty.
 	BaseURL string
@@ -71,8 +72,11 @@ type Server struct {
 
 	siteName atomic.Value
 	tracker  atomic.Pointer[tracker.Client]
-	sso      *sso.Client
-	grants   *grantChecks
+	calendar atomic.Pointer[calendar.Client]
+	// calendarKick wakes the calendar worker after a save.
+	calendarKick chan struct{}
+	sso          *sso.Client
+	grants       *grantChecks
 
 	limiter *loginLimiter
 	live    *hub
@@ -83,7 +87,8 @@ func New(cfg Config, st *store.Store, logger *slog.Logger) (*Server, error) {
 	if cfg.SessionTTL == 0 {
 		cfg.SessionTTL = 30 * 24 * time.Hour
 	}
-	s := &Server{cfg: cfg, store: st, log: logger, limiter: newLoginLimiter(10, 15*time.Minute), live: newHub(), grants: newGrantChecks()}
+	s := &Server{cfg: cfg, store: st, log: logger, limiter: newLoginLimiter(10, 15*time.Minute), live: newHub(), grants: newGrantChecks(),
+		calendarKick: make(chan struct{}, 1)}
 	if err := s.setupSSO(); err != nil {
 		return nil, err
 	}
@@ -137,25 +142,25 @@ func (s *Server) setupSSO() error {
 	return nil
 }
 
-func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) { s.handler.ServeHTTP(w, r) }
-
-func (s *Server) reloadSettings() {
-	s.siteName.Store(s.store.Setting("site_name", "Production Planner"))
-	url, token := s.trackerSettings()
-	s.tracker.Store(tracker.New(url, token))
+func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	s.handler.ServeHTTP(w, r)
+	// Anything posted may have changed a date: send it on to the calendar
+	// now rather than at the worker's next tick.
+	if r.Method != http.MethodGet && r.Method != http.MethodHead {
+		s.KickCalendar()
+	}
 }
 
-// trackerSettings is the maintenance tracker's address and API token:
-// from the environment when set there, otherwise from Settings.
-func (s *Server) trackerSettings() (url, token string) {
-	url, token = s.cfg.TrackerURL, s.cfg.TrackerToken
-	if url == "" {
-		url = s.store.Setting("tracker_url", "")
-	}
-	if token == "" {
-		token = s.store.Setting("tracker_token", "")
-	}
-	return url, token
+// reloadSettings rebuilds what comes from settings: the site name and the
+// connections (see connections.go).
+func (s *Server) reloadSettings() {
+	s.siteName.Store(s.store.Setting("site_name", "Production Planner"))
+	t := s.resolve(connTracker)
+	s.tracker.Store(tracker.New(t.Get("tracker_url"), t.Get("tracker_token")))
+	cal := s.resolve(connCalendar)
+	s.calendar.Store(calendar.New(cal.Get("calendar_url"), cal.Get("calendar_internal_url"), cal.Get("calendar_token")))
+	// A calendar connected just now gets what's been waiting.
+	s.KickCalendar()
 }
 
 func (s *Server) SiteName() string { return s.siteName.Load().(string) }

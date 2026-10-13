@@ -21,18 +21,25 @@ func seedDemo(st *store.Store) error {
 	if err != nil {
 		return err
 	}
+	if _, err := st.AddProductionRoom(id, 0, "Sanctuary"); err != nil {
+		return err
+	}
+	rooms, err := st.ProductionRooms(id)
+	if err != nil {
+		return err
+	}
 
 	for _, e := range []store.Event{
-		{Kind: "rehearsal", Date: day(-7), Time: "16:00"},
-		{Kind: "rehearsal", Date: day(0), Time: "16:00"},
-		{Kind: "rehearsal", Date: day(7), Time: "16:00"},
-		{Kind: "tech", Date: day(12), Time: "18:30", Notes: "Lights, sound and slides only; no costumes."},
-		{Kind: "dress", Date: day(14), Time: "17:00"},
+		{Kind: "rehearsal", Date: day(-7), Time: "16:00", EndTime: "18:00"},
+		{Kind: "rehearsal", Date: day(0), Time: "16:00", EndTime: "18:00"},
+		{Kind: "rehearsal", Date: day(7), Time: "16:00", EndTime: "18:00"},
+		{Kind: "tech", Date: day(12), Time: "18:30", EndTime: "21:00", Notes: "Lights, sound and slides only; no costumes."},
+		{Kind: "dress", Date: day(14), Time: "17:00", EndTime: "19:30"},
 		{Kind: "performance", Date: day(16), Time: "18:00", Label: "Sunday evening"},
 		{Kind: "performance", Date: day(17), Time: "10:30", Label: "Morning service"},
 	} {
 		e.ProductionID = id
-		if _, err := st.CreateEvent(&e); err != nil {
+		if _, err := st.CreateEvent(&e, rooms); err != nil {
 			return err
 		}
 	}

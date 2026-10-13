@@ -4,6 +4,7 @@
 //	production-planner create-user NAME      create a user (prompts for password)
 //	production-planner reset-password NAME   set a new password for a user
 //	production-planner local-login on|off    break-glass: password sign-in even with SSO_URL set
+//	production-planner connection clear tracker|calendar   forget a connection's saved settings
 //	production-planner backup FILE           write a consistent copy of the database
 //	production-planner seed-demo             add a sample production to try the app out
 //
@@ -73,9 +74,12 @@ func main() {
 		return
 	}
 
+	connEnv := map[string]string{}
+	for _, k := range server.ConnectionEnv() {
+		connEnv[k] = os.Getenv(k)
+	}
 	srv, err := server.New(server.Config{
-		Dev: *dev, TrustProxy: *trustProxy,
-		TrackerURL: os.Getenv("TRACKER_URL"), TrackerToken: os.Getenv("TRACKER_TOKEN"),
+		Dev: *dev, TrustProxy: *trustProxy, Env: connEnv,
 		BaseURL: env("BASE_URL", ""),
 		SSOURL:  env("SSO_URL", ""), SSOInternalURL: env("SSO_INTERNAL_URL", ""),
 		SSOClientID: env("SSO_CLIENT_ID", ""), SSOClientSecret: env("SSO_CLIENT_SECRET", ""),
@@ -112,6 +116,13 @@ func main() {
 		}
 	}()
 
+	// Send changed dates to the church calendar, when one is set up.
+	calendarDone := make(chan struct{})
+	go func() {
+		srv.RunCalendarWorker(ctx)
+		close(calendarDone)
+	}()
+
 	go func() {
 		logger.Info("listening", "addr", *addr, "db", *dbPath, "dev", *dev, "tz", time.Local.String())
 		if err := httpSrv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
@@ -125,6 +136,10 @@ func main() {
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	httpSrv.Shutdown(shutdownCtx)
+	select {
+	case <-calendarDone:
+	case <-shutdownCtx.Done():
+	}
 }
 
 var commandUsage = map[string]string{
@@ -133,7 +148,11 @@ var commandUsage = map[string]string{
 	"local-login":    "local-login on|off",
 	"backup":         "backup DEST_FILE",
 	"seed-demo":      "seed-demo",
+	"connection":     "connection clear tracker|calendar",
 }
+
+// commandNames lists the commands for the unknown-command error.
+const commandNames = "create-user, reset-password, local-login, connection, backup, seed-demo"
 
 // checkCommand validates a command line before anything touches the
 // database. Flags belong before the command; after it they'd be ignored.
@@ -143,9 +162,18 @@ func checkCommand(args []string) error {
 	}
 	usage, ok := commandUsage[args[0]]
 	if !ok {
-		return fmt.Errorf("unknown command %q (commands: create-user, reset-password, local-login, backup, seed-demo)", args[0])
+		return fmt.Errorf("unknown command %q (commands: %s)", args[0], commandNames)
 	}
 	rest := args[1:]
+	if args[0] == "connection" {
+		if len(args) != 3 || args[1] != "clear" {
+			return errors.New("usage: " + usage)
+		}
+		if server.ConnectionKeys(args[2]) == nil {
+			return fmt.Errorf("unknown connection %q (use tracker or calendar). usage: %s", args[2], usage)
+		}
+		return nil
+	}
 	if args[0] == "create-user" {
 		rest = slices.DeleteFunc(slices.Clone(rest), func(a string) bool { return a == "--admin" })
 	}
@@ -224,8 +252,16 @@ func runCommand(st *store.Store, args []string) error {
 			return err
 		}
 		fmt.Println("Demo production added.")
+	case "connection":
+		// For when a bad saved setting is the problem. Environment
+		// variables, if set, still win.
+		n, err := st.ClearConnection(server.ConnectionKeys(args[2]), "")
+		if err != nil {
+			return err
+		}
+		fmt.Printf("Cleared %d saved setting(s) for %s. Restart the app to use the change.\n", n, args[2])
 	default:
-		return fmt.Errorf("unknown command %q (commands: create-user, reset-password, local-login, backup, seed-demo)", args[0])
+		return fmt.Errorf("unknown command %q (commands: %s)", args[0], commandNames)
 	}
 	return nil
 }

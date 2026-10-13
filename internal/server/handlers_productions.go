@@ -102,6 +102,12 @@ func (s *Server) productionForm(w http.ResponseWriter, r *http.Request, status i
 		}
 		data["Users"], data["IsMember"] = users, isMember
 	}
+	if p.ID != 0 {
+		if err := s.roomsData(r, &p, data); err != nil {
+			s.serverError(w, r, err)
+			return
+		}
+	}
 	s.render(w, r, status, "productions/form", data)
 }
 
@@ -116,6 +122,7 @@ func readProduction(r *http.Request, p *store.Production) ([]int64, []string) {
 	p.Title, p.Kind, p.Status = formStr(r, "title"), formStr(r, "kind"), formStr(r, "status")
 	p.Venue, p.Director = formStr(r, "venue"), formStr(r, "director")
 	p.Description, p.Notes = formStr(r, "description"), formStr(r, "notes")
+	p.Public = formStr(r, "public") == "1"
 	var members []int64
 	if currentUser(r).IsAdmin {
 		p.Locked = formStr(r, "access") == "locked"
@@ -264,15 +271,64 @@ func (s *Server) handleProductionDelete(w http.ResponseWriter, r *http.Request) 
 
 // Schedule ---------------------------------------------------------------
 
-func (s *Server) scheduleData(p *store.Production, form store.Event, errs []string) (map[string]any, error) {
+// scheduleRow is a date with its rooms and who else wants them.
+type scheduleRow struct {
+	store.Event
+	Rooms     []store.Room
+	Conflicts []store.DateRef // this app's other dates in the same rooms
+	Clashes   []clash         // from the calendar, when it's set up
+}
+
+func (s *Server) scheduleData(r *http.Request, p *store.Production, form store.Event, opts []roomOption, errs []string) (map[string]any, error) {
 	events, err := s.store.ListEvents(p.ID)
 	if err != nil {
 		return nil, err
 	}
+	rooms, err := s.store.ScheduleRooms(p.ID)
+	if err != nil {
+		return nil, err
+	}
+	conflicts, err := s.store.RoomConflicts(p.ID, currentUser(r))
+	if err != nil {
+		return nil, err
+	}
+	prodRooms, err := s.store.ProductionRooms(p.ID)
+	if err != nil {
+		return nil, err
+	}
+	data := map[string]any{"Form": form, "Errors": errs, "Kinds": store.EventKinds, "ProdRooms": prodRooms}
+	rows := make([]scheduleRow, len(events))
+	for i, e := range events {
+		rows[i] = scheduleRow{Event: e, Rooms: rooms[e.ID], Conflicts: conflicts[e.ID]}
+	}
+	// With the calendar set, it knows about every app's bookings, so its
+	// answer replaces this app's own check. If it can't be reached, fall
+	// back to that, plus what it said the last time each date was sent.
+	if s.Calendar().Configured() {
+		if clashes, err := s.scheduleClashes(r.Context(), events, rooms); err != nil {
+			data["CalendarDown"] = true
+			for i := range rows {
+				if rows[i].Date >= s.today() {
+					rows[i].Clashes = s.storedClashes(rows[i].ID)
+				}
+			}
+		} else {
+			for i := range rows {
+				rows[i].Conflicts = nil
+				rows[i].Clashes = clashes[rows[i].ID]
+			}
+		}
+	}
+	data["Events"] = rows
 	if form.Kind == "" {
 		form.Kind = "rehearsal"
+		data["Form"] = form
 	}
-	return map[string]any{"Events": events, "Form": form, "Errors": errs, "Kinds": store.EventKinds}, nil
+	if opts == nil {
+		opts = roomOptions(prodRooms, nil, true)
+	}
+	data["RoomOptions"] = opts
+	return data, nil
 }
 
 func (s *Server) handleSchedule(w http.ResponseWriter, r *http.Request) {
@@ -280,7 +336,7 @@ func (s *Server) handleSchedule(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	data, err := s.scheduleData(p, store.Event{}, nil)
+	data, err := s.scheduleData(r, p, store.Event{}, nil, nil)
 	if err != nil {
 		s.serverError(w, r, err)
 		return
@@ -291,6 +347,7 @@ func (s *Server) handleSchedule(w http.ResponseWriter, r *http.Request) {
 
 func readEvent(r *http.Request, e *store.Event) []string {
 	e.Kind, e.Date, e.Time = formStr(r, "kind"), formStr(r, "date"), formStr(r, "time")
+	e.EndTime = formStr(r, "end_time")
 	e.Label, e.Notes = formStr(r, "label"), formStr(r, "notes")
 	var errs []string
 	if !slices.Contains(store.EventKinds, e.Kind) {
@@ -299,8 +356,12 @@ func readEvent(r *http.Request, e *store.Event) []string {
 	if !validDate(e.Date) {
 		errs = append(errs, "Pick a date.")
 	}
-	if e.Time != "" && !validTime(e.Time) {
+	if (e.Time != "" && !validTime(e.Time)) || (e.EndTime != "" && !validTime(e.EndTime)) {
 		errs = append(errs, "Times look like 18:30.")
+	} else if e.EndTime != "" && e.Time == "" {
+		errs = append(errs, "Give it a start time too, or leave the end time blank.")
+	} else if e.EndTime != "" && e.EndTime <= e.Time {
+		errs = append(errs, "The end time has to be after the start time.")
 	}
 	return errs
 }
@@ -310,9 +371,17 @@ func (s *Server) handleEventCreate(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
+	prodRooms, err := s.store.ProductionRooms(p.ID)
+	if err != nil {
+		s.serverError(w, r, err)
+		return
+	}
 	e := store.Event{ProductionID: p.ID}
-	if errs := readEvent(r, &e); errs != nil {
-		data, err := s.scheduleData(p, e, errs)
+	errs := readEvent(r, &e)
+	opts := roomOptions(prodRooms, nil, true)
+	rooms := readEventRooms(r, opts)
+	if errs != nil {
+		data, err := s.scheduleData(r, p, e, opts, errs)
 		if err != nil {
 			s.serverError(w, r, err)
 			return
@@ -320,7 +389,7 @@ func (s *Server) handleEventCreate(w http.ResponseWriter, r *http.Request) {
 		s.prodPage(w, r, http.StatusUnprocessableEntity, "productions/schedule", p, "schedule", data)
 		return
 	}
-	if _, err := s.store.CreateEvent(&e); err != nil {
+	if _, err := s.store.CreateEvent(&e, rooms); err != nil {
 		s.serverError(w, r, err)
 		return
 	}
@@ -337,12 +406,37 @@ func (s *Server) eventAndProduction(w http.ResponseWriter, r *http.Request) (*st
 	return e, p, ok
 }
 
+// eventRoomOptions is the room checkboxes for editing a date.
+func (s *Server) eventRoomOptions(e *store.Event) ([]roomOption, error) {
+	prodRooms, err := s.store.ProductionRooms(e.ProductionID)
+	if err != nil {
+		return nil, err
+	}
+	current, err := s.store.EventRooms(e.ID)
+	if err != nil {
+		return nil, err
+	}
+	return roomOptions(prodRooms, current, false), nil
+}
+
+func (s *Server) eventForm(w http.ResponseWriter, r *http.Request, status int, e *store.Event, p *store.Production, opts []roomOption, errs []string) {
+	s.prodPage(w, r, status, "events/form", p, "schedule", map[string]any{
+		"Form": *e, "Kinds": store.EventKinds, "RoomOptions": opts, "Errors": errs,
+		"Clashes": s.storedClashes(e.ID),
+	})
+}
+
 func (s *Server) handleEventEdit(w http.ResponseWriter, r *http.Request) {
 	e, p, ok := s.eventAndProduction(w, r)
 	if !ok {
 		return
 	}
-	s.prodPage(w, r, http.StatusOK, "events/form", p, "schedule", map[string]any{"Form": *e, "Kinds": store.EventKinds})
+	opts, err := s.eventRoomOptions(e)
+	if err != nil {
+		s.serverError(w, r, err)
+		return
+	}
+	s.eventForm(w, r, http.StatusOK, e, p, opts, nil)
 }
 
 func (s *Server) handleEventUpdate(w http.ResponseWriter, r *http.Request) {
@@ -350,11 +444,18 @@ func (s *Server) handleEventUpdate(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	if errs := readEvent(r, e); errs != nil {
-		s.prodPage(w, r, http.StatusUnprocessableEntity, "events/form", p, "schedule", map[string]any{"Form": *e, "Kinds": store.EventKinds, "Errors": errs})
+	opts, err := s.eventRoomOptions(e)
+	if err != nil {
+		s.serverError(w, r, err)
 		return
 	}
-	if err := s.store.UpdateEvent(e); err != nil {
+	errs := readEvent(r, e)
+	rooms := readEventRooms(r, opts)
+	if errs != nil {
+		s.eventForm(w, r, http.StatusUnprocessableEntity, e, p, opts, errs)
+		return
+	}
+	if err := s.store.UpdateEvent(e, rooms); err != nil {
 		s.serverError(w, r, err)
 		return
 	}

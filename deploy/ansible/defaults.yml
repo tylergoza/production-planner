@@ -52,14 +52,28 @@ ssh_sources: [0.0.0.0/0, "::/0"]
 # Church time zone: decides what "today", "upcoming" and "overdue" mean.
 tz: America/Chicago
 
-# The maintenance tracker to read products, items and supplies from.
-# Leave both empty to set them in the app under Settings instead. When set
-# here they're fixed: Settings shows them but can't change them. Make the
-# token in the tracker under API ("Production planner") and pass it in the
-# environment so it never lands in a file:
+# Connections (maintenance tracker, calendar). Each one is optional: leave it
+# blank to manage it in the app on /admin/connections. When set here it's
+# used as a whole and fixed there; press Keep in settings on that page, then
+# blank it here and redeploy to hand it over to the app. Tokens come from
+# the environment so they never land in a file (with-pp passes them from the
+# Keychain).
+
+# The maintenance tracker to read products, items, supplies and rooms from.
+# Make the token in the tracker under API ("Production planner"):
 #   export PP_TRACKER_TOKEN=mt_...
 tracker_url: ""
 tracker_token: "{{ lookup('env', 'PP_TRACKER_TOKEN') }}"
+
+# The church calendar (../calendar) that rehearsals and performances are sent
+# to. calendar_url is its public address. calendar_internal_url is for
+# server-to-server calls; on the shared droplet the calendar listens on
+# http://127.0.0.1:8120, so use that there. calendar_token is a source token
+# (cal_...) for "productions" made in the calendar:
+#   export PP_CALENDAR_TOKEN=cal_...   # Keychain item production-planner-calendar
+calendar_url: ""
+calendar_internal_url: ""
+calendar_token: "{{ lookup('env', 'PP_CALENDAR_TOKEN') }}"
 
 # Single sign-on through User Management. Empty sso_url keeps the planner's
 # own password login. To turn SSO on, set sso_url and base_url in vars.yml,

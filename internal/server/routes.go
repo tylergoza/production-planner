@@ -54,6 +54,9 @@ func (s *Server) routes() http.Handler {
 	auth("GET /productions/{id}/edit", s.handleProductionEdit)
 	auth("POST /productions/{id}", s.handleProductionUpdate)
 	auth("POST /productions/{id}/delete", s.handleProductionDelete)
+	auth("POST /productions/{id}/rooms", s.handleProductionRoomCreate)
+	auth("POST /production-rooms/{id}/delete", s.handleProductionRoomDelete)
+	auth("POST /production-rooms/{id}/move", s.handleMove("production_rooms"))
 
 	auth("GET /productions/{id}/schedule", s.handleSchedule)
 	auth("POST /productions/{id}/events", s.handleEventCreate)
@@ -117,6 +120,12 @@ func (s *Server) routes() http.Handler {
 	admin("GET /admin/settings", s.handleSettings)
 	admin("POST /admin/settings", s.handleSettingsUpdate)
 	admin("GET /admin/backup", s.handleBackup)
+	admin("GET /admin/connections", s.handleConnections)
+	admin("POST /admin/connections/{name}", s.handleConnectionSave)
+	admin("POST /admin/connections/{name}/test", s.handleConnectionTest)
+	admin("POST /admin/connections/{name}/keep", s.handleConnectionKeep)
+	admin("POST /admin/connections/calendar/backfill", s.handleCalendarBackfill)
+	admin("GET /admin/connections/calendar/status", s.handleCalendarStatus)
 
 	mux.HandleFunc("/", s.notFound)
 

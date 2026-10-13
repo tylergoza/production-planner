@@ -148,7 +148,8 @@
     # tracker and calendar connections go here too when they're set, which
     # locks them on the app's Connections page (blank them and redeploy to
     # manage them there). So does single sign-on when sso_url is set (unset
-    # it and redeploy to turn SSO off; `local-login on` is the break-glass).
+    # it and redeploy to manage it on Connections; `local-login on` is the
+    # break-glass).
     # Readable by root only: it holds the tokens and the SSO client secret.
     - name: Set the time zone and the connections (tracker, calendar, single sign-on)
       ansible.builtin.copy:

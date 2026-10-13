@@ -21,7 +21,7 @@ import (
 
 func TestCalendarBooking(t *testing.T) {
 	srv, _ := newConnServer(t, nil)
-	srv.cfg.BaseURL = "https://plan.example.org"
+	srv.ssoBaseURL.Store("https://plan.example.org")
 	rooms := []store.Room{{PlaceID: 41, PlaceName: "Lifecenter"}, {PlaceName: "lifecenter"}, {PlaceName: "Kitchen"}}
 	p := &store.Production{ID: 3, Title: "Christmas Musical", Description: "Songs and the story", Public: true, Status: "rehearsing"}
 

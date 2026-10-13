@@ -20,7 +20,7 @@
             <input id="{{.ID}}" value="{{if .IsSet}}Set{{if .Tail}}, ends {{.Tail}}{{end}}{{else}}Not set{{end}}" disabled>
           {{else}}
             <input id="{{.ID}}" name="{{.Key}}" type="password" autocomplete="off" placeholder="{{if .IsSet}}Set{{if .Tail}}, ends {{.Tail}}{{end}}; paste a new one to replace it{{else}}Not set: {{.Hint}}{{end}}">
-            {{if .IsSet}}<label class="check small"><input type="checkbox" name="remove_{{.Key}}" value="1"> Remove</label>{{end}}
+            {{if and .IsSet $c.CanRemove}}<label class="check small"><input type="checkbox" name="remove_{{.Key}}" value="1"> Remove</label>{{end}}
           {{end}}
         {{else if $c.FromEnv}}
           <input id="{{.ID}}" value="{{.Value}}" disabled>
@@ -37,6 +37,8 @@
       {{else}}
         <p class="hint">Set on the server, so it can't be changed here.</p>
       {{end}}
+    {{else if $c.IsSSO}}
+      <p class="hint">Saving keeps these as pending and doesn't change how anyone signs in. Leave the secret blank to keep the current one.</p>
     {{else}}
       <p class="hint">Saving checks the connection, and saves even if the check fails. Leave a token blank to keep the current one.</p>
     {{end}}
@@ -57,6 +59,30 @@
       </form>
     {{end}}
   </div>
+
+  {{if $c.IsSSO}}
+    {{if $c.Pending}}
+      <p><strong>Pending: not live until a test sign-in works.</strong> The values above are waiting. Test sign-in takes you to User Management and back; it only goes live if you come back as an admin of this app. You stay signed in here either way.</p>
+      <div class="form__actions">
+        {{if not $c.FromEnv}}
+        <form method="post" action="/admin/connections/sso/signin-test">
+          {{template "csrf" $.CSRF}}
+          <button type="submit" class="btn btn--primary">Test sign-in</button>
+        </form>
+        <form method="post" action="/admin/connections/sso/discard">
+          {{template "csrf" $.CSRF}}
+          <button type="submit" class="btn">Discard</button>
+        </form>
+        {{end}}
+      </div>
+    {{end}}
+    {{if $c.CanTurnOff}}
+      <form method="post" action="/admin/connections/sso/off" data-controller="confirm" data-confirm-message-value="Turn off single sign-on? Everyone will need a local password here to sign in. People who only ever signed in through User Management have none; set one on the server with production-planner reset-password USERNAME." data-action="submit->confirm#check">
+        {{template "csrf" $.CSRF}}
+        <button type="submit" class="btn btn--danger">Turn off single sign-on</button>
+      </form>
+    {{end}}
+  {{end}}
 
   {{if eq $c.Name "calendar"}}
     <div data-controller="calendar-status" data-calendar-status-url-value="/admin/connections/calendar/status" data-calendar-status-waiting-value="{{$.Cal.Waiting}}">

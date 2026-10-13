@@ -4,7 +4,8 @@
 //	production-planner create-user NAME      create a user (prompts for password)
 //	production-planner reset-password NAME   set a new password for a user
 //	production-planner local-login on|off    break-glass: password sign-in even with SSO_URL set
-//	production-planner connection clear tracker|calendar   forget a connection's saved settings
+//	production-planner connection clear sso|tracker|calendar
+//	                                         break-glass: forget a connection's saved settings
 //	production-planner backup FILE           write a consistent copy of the database
 //	production-planner seed-demo             add a sample production to try the app out
 //
@@ -80,9 +81,6 @@ func main() {
 	}
 	srv, err := server.New(server.Config{
 		Dev: *dev, TrustProxy: *trustProxy, Env: connEnv,
-		BaseURL: env("BASE_URL", ""),
-		SSOURL:  env("SSO_URL", ""), SSOInternalURL: env("SSO_INTERNAL_URL", ""),
-		SSOClientID: env("SSO_CLIENT_ID", ""), SSOClientSecret: env("SSO_CLIENT_SECRET", ""),
 	}, st, logger)
 	if err != nil {
 		logger.Error("init server", "err", err)
@@ -148,7 +146,7 @@ var commandUsage = map[string]string{
 	"local-login":    "local-login on|off",
 	"backup":         "backup DEST_FILE",
 	"seed-demo":      "seed-demo",
-	"connection":     "connection clear tracker|calendar",
+	"connection":     "connection clear sso|tracker|calendar",
 }
 
 // commandNames lists the commands for the unknown-command error.
@@ -169,8 +167,8 @@ func checkCommand(args []string) error {
 		if len(args) != 3 || args[1] != "clear" {
 			return errors.New("usage: " + usage)
 		}
-		if server.ConnectionKeys(args[2]) == nil {
-			return fmt.Errorf("unknown connection %q (use tracker or calendar). usage: %s", args[2], usage)
+		if keys, _ := server.ConnectionKeys(args[2]); keys == nil {
+			return fmt.Errorf("unknown connection %q (use sso, tracker or calendar). usage: %s", args[2], usage)
 		}
 		return nil
 	}
@@ -255,11 +253,14 @@ func runCommand(st *store.Store, args []string) error {
 	case "connection":
 		// For when a bad saved setting is the problem. Environment
 		// variables, if set, still win.
-		n, err := st.ClearConnection(server.ConnectionKeys(args[2]), "")
+		n, err := st.ClearConnection(server.ConnectionKeys(args[2]))
 		if err != nil {
 			return err
 		}
 		fmt.Printf("Cleared %d saved setting(s) for %s. Restart the app to use the change.\n", n, args[2])
+		if args[2] == "sso" {
+			fmt.Println("Sign-in falls back to local passwords unless SSO_URL is set on the server; use reset-password if needed.")
+		}
 	default:
 		return fmt.Errorf("unknown command %q (commands: %s)", args[0], commandNames)
 	}

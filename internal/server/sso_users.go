@@ -32,7 +32,7 @@ func ssoUserOf(u sso.AppUser) store.SSOUser {
 func (s *Server) syncPeople(ctx context.Context) (*sso.AppUsers, error) {
 	ctx, cancel := context.WithTimeout(ctx, ssoCallTimeout)
 	defer cancel()
-	list, err := s.sso.AppUsers(ctx)
+	list, err := s.SSO().AppUsers(ctx)
 	if err != nil {
 		s.log.Warn("sync people from User Management failed; using the local list", "err", err)
 		return nil, err
@@ -52,7 +52,7 @@ func (s *Server) syncPeople(ctx context.Context) (*sso.AppUsers, error) {
 // attached, so they still show if their access was removed. With SSO off
 // it's everyone, as before.
 func (s *Server) pickableUsers(r *http.Request, keep []int64) ([]store.User, error) {
-	if !s.sso.Enabled() {
+	if !s.SSO().Enabled() {
 		return s.store.ListUsers()
 	}
 	s.syncPeople(r.Context())
@@ -72,7 +72,7 @@ func (s *Server) handleSSOUsers(w http.ResponseWriter, r *http.Request) {
 	data := map[string]any{
 		"Title":     "Users",
 		"ReadOnly":  actingGrant(r) == "",
-		"ManageURL": s.sso.PublicURL + "/admin/users",
+		"ManageURL": s.SSO().PublicURL + "/admin/users",
 	}
 	list, err := s.syncPeople(r.Context())
 	if err != nil && list == nil {
@@ -101,7 +101,7 @@ func (s *Server) handleSSOUsers(w http.ResponseWriter, r *http.Request) {
 // handleSSOAccessUpdate changes one person's role or suspension in User
 // Management. The form sends either role or suspended ("1" or "0").
 func (s *Server) handleSSOAccessUpdate(w http.ResponseWriter, r *http.Request) {
-	if !s.sso.Enabled() {
+	if !s.SSO().Enabled() {
 		s.notFound(w, r)
 		return
 	}
@@ -134,7 +134,7 @@ func (s *Server) handleSSOAccessUpdate(w http.ResponseWriter, r *http.Request) {
 
 	ctx, cancel := context.WithTimeout(r.Context(), ssoCallTimeout)
 	defer cancel()
-	u, err := s.sso.UpdateAppUser(ctx, grant, r.PathValue("sub"), role, suspended)
+	u, err := s.SSO().UpdateAppUser(ctx, grant, r.PathValue("sub"), role, suspended)
 	if err != nil {
 		s.log.Warn("change access in User Management refused or failed", "by", currentUser(r).Username, "sub", r.PathValue("sub"), "err", err)
 		var ae *sso.APIError
@@ -148,7 +148,7 @@ func (s *Server) handleSSOAccessUpdate(w http.ResponseWriter, r *http.Request) {
 		}
 		return
 	}
-	s.sso.Forget()
+	s.SSO().Forget()
 	local, err := s.store.SaveSSOUser(ssoUserOf(*u))
 	if err != nil {
 		s.serverError(w, r, err)

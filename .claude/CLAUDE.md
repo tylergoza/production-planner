@@ -15,11 +15,7 @@ the tracker should get the same change.
 - CSP is `style-src 'self'`: no inline `style=` attributes in templates.
 - Each page template is parsed with only `layout.html` + `partials/*.html`,
   so anything shared between pages goes in a partial.
-- Deploys onto the maintenance tracker's droplet (found by tag
-  `maintenance-tracker`). Caddy is split: `/etc/caddy/Caddyfile` only does
-  `import /etc/caddy/sites/*.caddy`, and each app writes its own site file.
-  The main Caddyfile text must stay identical in both repos' deploy.yml.
-  `deploy/ansible/vars.yml` is gitignored and holds the real domain.
+- Deploy (`deploy/ansible`): the app runs on an apps box (`apps_box`, default `apps-1`, shared with the other apps) in the church DigitalOcean account and binds its VPC address on port 8090; the edge box (`../edge_proxy`) holds Caddy, DNS points at it, and this deploy writes the app's site file there. Run commands through `with-do-church`. Its state is `productions.db` plus `secrets.key` only; `make backup` / `restore` / `move` carry both. Real `do_team` and domains live in the gitignored `vars.yml`.
 - The user runs all `git commit`s themselves (YubiKey signing). Don't commit.
 - `CALENDAR_PLAN.md` is this app's part of joining `../calendar` (8120);
   tick its checkboxes as steps are done. Everything there is optional:

@@ -1,0 +1,144 @@
+# Copies the database and secrets.key from a box to this machine, with a manifest
+# of checksums, outside every repo. The app's own backup command makes a
+# consistent snapshot, so nothing is lost from the -wal file. FROM can be an IP
+# (needs only SSH, no token) or a droplet name (looked up in the token's account).
+#
+#   make backup FROM=203.0.113.10                 # the app keeps running
+#   make backup FROM=203.0.113.10 STOP=true       # final copy: the app is stopped first and stays off
+#
+# Everything the app keeps is those two files; it stores nothing else on disk.
+
+- name: Pick the source box
+  hosts: localhost
+  gather_facts: false
+  vars_files: [defaults.yml, vars.yml]
+  tasks:
+    - name: Check from is set
+      ansible.builtin.assert:
+        that: from is defined and from | length > 0
+        fail_msg: Say which box, e.g. make backup FROM=203.0.113.10
+        quiet: true
+
+    # An IP needs no token at all.
+    - name: Check the account
+      ansible.builtin.include_tasks: tasks/check_account.yml
+      when: from is not match('^[0-9]{1,3}(\.[0-9]{1,3}){3}$')
+
+    - name: Find the source box
+      ansible.builtin.include_tasks: tasks/find_source.yml
+
+    - name: Choose the backup folder
+      ansible.builtin.set_fact:
+        backup_time: "{{ now(utc=true, fmt='%Y%m%dT%H%M%SZ') }}"
+        backup_dir: "{{ local_backup_dir | expanduser }}/production-planner/{{ now(utc=true, fmt='%Y%m%dT%H%M%SZ') }}"
+
+    - name: Create it
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: directory
+        mode: "0700"
+      loop:
+        - "{{ local_backup_dir | expanduser }}"
+        - "{{ local_backup_dir | expanduser }}/production-planner"
+        - "{{ backup_dir }}"
+
+- name: Copy the data
+  hosts: source
+  gather_facts: false
+  vars_files: [defaults.yml, vars.yml]
+  vars:
+    backup_dir: "{{ hostvars.localhost.backup_dir }}"
+    snapshot: "{{ app_backup_dir }}/export-{{ hostvars.localhost.backup_time }}.db"
+    planner: [runuser, -u, planner, --, /usr/local/bin/production-planner, -db, "{{ app_db }}"]
+  tasks:
+    - name: Check the app is installed
+      ansible.builtin.stat:
+        path: /usr/local/bin/production-planner
+        checksum_algorithm: sha256
+      register: binary
+      failed_when: not binary.stat.exists
+
+    - name: Check there's a database
+      ansible.builtin.stat:
+        path: "{{ app_db }}"
+      register: db
+      failed_when: not db.stat.exists
+
+    # Stopped before the snapshot, not after: a write between the two would be
+    # in neither the copy nor anything else.
+    - name: Stop the app
+      ansible.builtin.systemd_service:
+        name: production-planner
+        state: stopped
+      when: stop | default(false) | bool
+
+    - name: Snapshot and fetch
+      block:
+        - name: Make a snapshot with the app's backup command
+          ansible.builtin.command:
+            argv: "{{ planner + ['backup', snapshot] }}"
+          changed_when: true
+
+        - name: Fetch the database
+          ansible.builtin.fetch:
+            src: "{{ snapshot }}"
+            dest: "{{ backup_dir }}/productions.db"
+            flat: true
+      always:
+        - name: Delete the snapshot on the box
+          ansible.builtin.file:
+            path: "{{ snapshot }}"
+            state: absent
+
+    - name: Check for the secrets key
+      ansible.builtin.stat:
+        path: "{{ app_data_dir }}/secrets.key"
+      register: secrets_key
+
+    - name: Fetch the secrets key
+      ansible.builtin.fetch:
+        src: "{{ app_data_dir }}/secrets.key"
+        dest: "{{ backup_dir }}/secrets.key"
+        flat: true
+      when: secrets_key.stat.exists
+
+    - name: Lock down the local copies
+      ansible.builtin.file:
+        path: "{{ backup_dir }}/{{ item }}"
+        mode: "0600"
+      loop: "{{ ['productions.db'] + (['secrets.key'] if secrets_key.stat.exists else []) }}"
+      delegate_to: localhost
+
+    - name: Checksum them
+      ansible.builtin.stat:
+        path: "{{ backup_dir }}/{{ item }}"
+        checksum_algorithm: sha256
+      loop: "{{ ['productions.db'] + (['secrets.key'] if secrets_key.stat.exists else []) }}"
+      delegate_to: localhost
+      register: sums
+
+    - name: Write the manifest
+      ansible.builtin.copy:
+        content: "{{ manifest | to_nice_yaml }}"
+        dest: "{{ backup_dir }}/manifest.yml"
+        mode: "0600"
+      vars:
+        manifest:
+          app: production-planner
+          source: "{{ from }}"
+          time: "{{ hostvars.localhost.backup_time }}"
+          binary_sha256: "{{ binary.stat.checksum }}"
+          files: "{{ dict(sums.results | map(attribute='item') | zip(sums.results | map(attribute='stat') | map(attribute='checksum'))) }}"
+      delegate_to: localhost
+
+    # After the copy is safe on this machine.
+    - name: Keep the app off
+      ansible.builtin.systemd_service:
+        name: production-planner
+        enabled: false
+        state: stopped
+      when: stop | default(false) | bool
+
+    - name: Say where it went
+      ansible.builtin.debug:
+        msg: "Saved to {{ backup_dir }}{{ '. The app is stopped and disabled on ' ~ from if stop | default(false) | bool else '' }}"

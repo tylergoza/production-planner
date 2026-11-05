@@ -1,10 +1,12 @@
-# Tests and builds the Linux binary on this machine, then installs it, the
-# systemd unit and its Caddy site on every droplet tagged do_tag. The database
-# (and secrets.key beside it) is backed up first whenever the binary changes
-# (migrations run on start).
+# Tests and builds the Linux binary on this machine, installs it and the systemd
+# unit on every droplet tagged do_tag, then writes this app's Caddy site on the
+# edge box(es). The database (and secrets.key beside it) is backed up first
+# whenever the binary changes (migrations run on start).
 #
-#   export DIGITALOCEAN_TOKEN=...
-#   ansible-playbook deploy.yml             # or `make deploy` from the repo root
+#   with-do-church make deploy              # or ansible-playbook deploy.yml here
+#
+# With -e restore_pending=true the binary and unit go in but the app isn't
+# started and no admin is made, so `make restore` finds no database.
 #
 # To roll back, check out the previous commit and deploy it. If its
 # migrations changed the database, restore the pre-deploy backup as well
@@ -32,6 +34,32 @@
         quiet: true
       when: sso_url | length > 0
 
+    - name: Check the account
+      ansible.builtin.include_tasks: tasks/check_account.yml
+
+    - name: Find the droplets
+      ansible.builtin.include_tasks: tasks/find_droplets.yml
+
+    - name: Check there's somewhere to deploy to
+      ansible.builtin.assert:
+        that: groups['app'] | default([]) | length > 0
+        fail_msg: No droplets are tagged {{ do_tag }}. Run provision.yml first.
+        quiet: true
+
+    - name: Check there's an edge box to route through
+      ansible.builtin.assert:
+        that: groups['edge'] | default([]) | length > 0
+        fail_msg: >-
+          No droplet is tagged {{ edge_tag }}, so nothing would serve {{ app_domain }}.
+          Provision the edge box first (edge_proxy: make provision).
+        quiet: true
+
+    - name: Check the app box has a VPC address
+      ansible.builtin.assert:
+        that: hostvars[groups['app'][0]].private_ip | length > 0
+        fail_msg: "{{ groups['app'][0] }} has no private (VPC) address, which the app binds to."
+        quiet: true
+
     - name: Run the tests
       ansible.builtin.command:
         cmd: make test
@@ -45,15 +73,6 @@
         chdir: "{{ repo_root }}"
       changed_when: true
 
-    - name: Find the droplets
-      ansible.builtin.include_tasks: tasks/find_droplets.yml
-
-    - name: Check there's somewhere to deploy to
-      ansible.builtin.assert:
-        that: groups['app'] | default([]) | length > 0
-        fail_msg: No droplets are tagged {{ do_tag }}. Run provision.yml first.
-        quiet: true
-
 - name: Install
   hosts: app
   gather_facts: false
@@ -64,16 +83,13 @@
     # runuser rather than become: Ubuntu 26.04's default sudo is sudo-rs.
     planner: [runuser, -u, planner, --, /usr/local/bin/production-planner, -db, "{{ app_db }}"]
   handlers:
+    # Not while a restore is pending: the app mustn't start and make an empty database.
     - name: Restart the app
       ansible.builtin.systemd_service:
         name: production-planner
         state: restarted
         daemon_reload: true
-
-    - name: Reload Caddy
-      ansible.builtin.systemd_service:
-        name: caddy
-        state: reloaded
+      when: not restore_pending | bool
   tasks:
     - name: Checksum the new binary
       ansible.builtin.stat:
@@ -144,7 +160,9 @@
         state: directory
         mode: "0755"
 
-    # The unit in the repo has a placeholder TZ; this overrides it. The
+    # The unit in the repo has a placeholder TZ and listens on loopback; this
+    # overrides both (ADDR is the box's VPC address, where the edge box's Caddy
+    # reaches it). The
     # tracker and calendar connections go here too when they're set, which
     # locks them on the app's Connections page (blank them and redeploy to
     # manage them there). So does single sign-on when sso_url is set (unset
@@ -155,6 +173,7 @@
       ansible.builtin.copy:
         content: |
           [Service]
+          Environment=ADDR={{ private_ip }}:{{ app_port }}
           Environment=TZ={{ tz }}
           {% if tracker_url %}
           Environment="TRACKER_URL={{ tracker_url }}"
@@ -183,59 +202,9 @@
       no_log: true
       notify: Restart the app
 
-    # The droplet can be shared with the maintenance tracker: each app puts
-    # its own site in /etc/caddy/sites/ and the main Caddyfile (the same in
-    # both repos) imports them all.
-    - name: Read the current Caddyfile
-      ansible.builtin.slurp:
-        src: /etc/caddy/Caddyfile
-      register: caddyfile
-      failed_when: false
-
-    # An older tracker deploy wrote the whole Caddyfile with its site in it.
-    # Replacing that would take the tracker offline, so stop instead.
-    - name: Check the Caddyfile can be replaced
-      vars:
-        current: "{{ (caddyfile.content | default('') | b64decode) }}"
-      ansible.builtin.assert:
-        that: >-
-          'import /etc/caddy/sites/*.caddy' in current
-          or 'Managed by deploy/ansible' not in current
-        fail_msg: >-
-          /etc/caddy/Caddyfile was written by an older maintenance tracker deploy.
-          Deploy the updated maintenance tracker first (it moves its site into
-          /etc/caddy/sites/), then run this again.
-        quiet: true
-
-    - name: Create the Caddy sites folder
-      ansible.builtin.file:
-        path: /etc/caddy/sites
-        state: directory
-        mode: "0755"
-
-    # Before the main file, so its import never finds an empty folder.
-    - name: Install this app's Caddy site
-      ansible.builtin.template:
-        src: Caddyfile.j2
-        dest: /etc/caddy/sites/production-planner.caddy
-        mode: "0644"
-        validate: caddy validate --adapter caddyfile --config %s
-      notify: Reload Caddy
-
-    - name: Install the main Caddyfile
-      ansible.builtin.copy:
-        content: |
-          # Managed by deploy/ansible in each app's repo; edits here are overwritten.
-          # Each app puts its own site in /etc/caddy/sites/.
-          import /etc/caddy/sites/*.caddy
-        dest: /etc/caddy/Caddyfile
-        mode: "0644"
-        validate: caddy validate --adapter caddyfile --config %s
-      notify: Reload Caddy
-
     # Before the app first starts, so /setup is never reachable.
     - name: Create the admin user
-      when: not db.stat.exists
+      when: not db.stat.exists and not restore_pending | bool
       vars:
         password: "{{ admin_password or lookup('ansible.builtin.password', '/dev/null', length=24, chars=['ascii_letters', 'digits']) }}"
       block:
@@ -251,23 +220,31 @@
           no_log: true
           changed_when: true
 
+    # The restore starts it, once the database is in place.
+    - name: Let systemd see the new unit
+      ansible.builtin.systemd_service:
+        daemon_reload: true
+      when: restore_pending | bool
+
     - name: Start the app
       ansible.builtin.systemd_service:
         name: production-planner
         enabled: true
         state: started
         daemon_reload: true
+      when: not restore_pending | bool
 
-    - name: Apply restarts and reloads
+    - name: Apply restarts
       ansible.builtin.meta: flush_handlers
 
     - name: Wait for the app to answer
       ansible.builtin.uri:
-        url: http://127.0.0.1:8090/healthz
+        url: http://{{ private_ip }}:{{ app_port }}/healthz
       register: health
       until: health.status == 200
       retries: 15
       delay: 2
+      when: not restore_pending | bool
 
     - name: Find old pre-deploy backups
       ansible.builtin.find:
@@ -297,6 +274,30 @@
         hint: "{{ (' Connect the ' ~ (unset_connections | join(' and ')) ~ ' on /admin/connections (or set it in vars.yml).') if unset_connections else '' }}"
       ansible.builtin.debug:
         msg: >-
-          {{ ('Running at https://' ~ app_domain ~ '. Sign in as ' ~ admin_username ~ ' with password '
+          {{ 'Installed, not started: run make restore next.' if restore_pending | bool else
+             ('Running at https://' ~ app_domain ~ '. Sign in as ' ~ admin_username ~ ' with password '
              ~ new_admin_password ~ ', and change it.'
              if new_admin_password is defined else 'Deployed to https://' ~ app_domain ~ '.') ~ hint }}
+
+# Each app owns its route: the edge box(es) get this app's site file, then
+# Caddy reloads. With two edge boxes both are written.
+- name: Route the domain through the edge box
+  hosts: edge
+  gather_facts: false
+  vars_files: [defaults.yml, vars.yml]
+  tasks:
+    - name: Create the Caddy sites folder
+      ansible.builtin.file:
+        path: /etc/caddy/sites
+        state: directory
+        mode: "0755"
+
+    - name: Install this app's Caddy site
+      ansible.builtin.template:
+        src: site.caddy.j2
+        dest: /etc/caddy/sites/production-planner.caddy
+        mode: "0644"
+        validate: caddy validate --adapter caddyfile --config %s
+
+    - name: Reload Caddy
+      ansible.builtin.include_tasks: tasks/caddy_reload.yml

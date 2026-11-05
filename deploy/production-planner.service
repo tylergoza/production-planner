@@ -9,7 +9,8 @@
 # Logs: journalctl -u production-planner -f
 [Unit]
 Description=Church Production Planner
-After=network.target
+After=network-online.target
+Wants=network-online.target
 
 [Service]
 User=planner
@@ -18,7 +19,9 @@ Environment=ADDR=127.0.0.1:8090
 Environment=DB_PATH=/var/lib/production-planner/productions.db
 Environment=TZ=America/Chicago
 # Caddy (deploy/Caddyfile) is in front; it's the only thing that can reach
-# 127.0.0.1:8090, so its X-Forwarded-* headers can be trusted.
+# 127.0.0.1:8090, so its X-Forwarded-* headers can be trusted. The Ansible
+# deploy overrides ADDR with the box's VPC address, which the edge box's Caddy
+# reaches and a firewall limits to it.
 Environment=TRUST_PROXY=1
 ExecStart=/usr/local/bin/production-planner
 Restart=on-failure

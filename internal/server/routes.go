@@ -134,6 +134,9 @@ func (s *Server) routes() http.Handler {
 	admin("POST /admin/connections/sso/discard", s.handleSSODiscard)
 	admin("POST /admin/connections/sso/off", s.handleSSOOff)
 
+	// The per-person read API for the church MCP server (api_me.go).
+	s.meRoutes(mux)
+
 	mux.HandleFunc("/", s.notFound)
 
 	return s.logRequests(s.securityHeaders(s.loadSession(s.csrf(s.announceChanges(mux)))))
@@ -188,9 +191,16 @@ func (s *Server) securityHeaders(next http.Handler) http.Handler {
 
 const sessionCookie = "pp_session"
 
+// skipsSession is true for paths served without sessions and CSRF (no
+// cookies read or set): static files, and /api/, whose callers are
+// servers with bearer tokens, not browsers.
+func skipsSession(path string) bool {
+	return strings.HasPrefix(path, "/static/") || strings.HasPrefix(path, "/api/")
+}
+
 func (s *Server) loadSession(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if strings.HasPrefix(r.URL.Path, "/static/") {
+		if skipsSession(r.URL.Path) {
 			next.ServeHTTP(w, r)
 			return
 		}
@@ -229,7 +239,7 @@ const csrfCookie = "pp_csrf"
 
 func (s *Server) csrf(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if strings.HasPrefix(r.URL.Path, "/static/") {
+		if skipsSession(r.URL.Path) {
 			next.ServeHTTP(w, r)
 			return
 		}

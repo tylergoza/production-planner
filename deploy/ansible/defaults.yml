@@ -5,14 +5,19 @@
 # never lands in a file.
 do_token: "{{ lookup('env', 'DIGITALOCEAN_TOKEN') }}"
 
+# DigitalOcean team (as shown on the account) the token must belong to, so a
+# run can't touch the wrong account by mistake. Empty skips the check; set the
+# real name in vars.yml.
+do_team: ""
+
+# The apps box this app lives on. Several apps can share one: the first one
+# provisioned creates the box, the rest find it by tag and add their own user,
+# data folder and unit. Moving the app to another box is `make move`.
+apps_box: apps-1
 # Droplet. `doctl compute size list` / `region list` / `image list-distribution`
 # show the choices. nyc3 is New York 3; s-1vcpu-1gb is the $6/month Basic
 # droplet, which is plenty for this app.
-# By default the planner shares the maintenance tracker's droplet: it finds
-# it by the tracker's tag and adds itself alongside (port 8090, its own
-# service user, data folder and Caddy site). For a droplet of its own, set
-# droplet_name and do_tag to production-planner.
-droplet_name: maintenance-tracker
+droplet_name: "{{ apps_box }}"
 do_region: nyc3
 do_size: s-1vcpu-1gb
 do_image: ubuntu-26-04-x64
@@ -23,14 +28,34 @@ do_monitoring: true
 # Project (as named in the control panel) to put the droplet in. Empty means
 # the account's default project.
 do_project: ""
-# Droplets, firewall and deploys all find each other by this tag.
-do_tag: maintenance-tracker
-# More tags for the droplet, e.g. ones your own cloud firewalls target.
+# Droplets and deploys find each other by this tag.
+do_tag: "{{ apps_box }}"
+# Every apps box carries this tag too (the apps-internal firewall and the
+# monitoring alerts use it), and the edge box carries edge_tag.
+do_role_tag: apps
+edge_tag: edge
+# More tags for the droplet, e.g. ssh for the ssh firewall edge_proxy manages.
 # Added to existing droplets too on the next provision.
 do_extra_tags: []
-# Create a cloud firewall (named do_tag) that allows only SSH, HTTP and HTTPS.
-# Turn off if your own firewalls cover the droplet through do_extra_tags.
-do_firewall: true
+
+# Provision points app_domain's A record at the edge box. Turn off to leave
+# DNS alone.
+manage_dns: true
+# Monitoring alerts on every apps box, sent to the account's email address.
+alert_percent: 80
+# Swap file on the droplet.
+swap_size: 1G
+
+# Where the app listens on the box, on its VPC address (the drop-in sets
+# ADDR). The edge box proxies to it.
+app_port: 8090
+
+# Set by `make provision RESTORE_PENDING=true`: install the binary and unit but
+# don't start the app or create an admin, so `make restore` finds no database.
+restore_pending: false
+# Backups from `make backup` (the database, so private) go here, outside
+# every repo.
+local_backup_dir: ~/Backups/mountainview
 
 # Key Ansible connects with. Empty means your normal ssh setup (agent,
 # ~/.ssh/config). Set it to use a dedicated deploy key, e.g. when your usual
@@ -46,8 +71,6 @@ ssh_public_key_file: "{{ (ssh_private_key_file ~ '.pub') if ssh_private_key_file
 # More public key files to let in as root, e.g. your hardware-token keys when
 # Ansible uses a deploy key. Added on every provision; never removed.
 ssh_authorized_keys: []
-# Who may reach port 22. Narrow this to your own address if it's stable.
-ssh_sources: [0.0.0.0/0, "::/0"]
 
 # Church time zone: decides what "today", "upcoming" and "overdue" mean.
 tz: America/Chicago
@@ -67,8 +90,8 @@ tracker_token: "{{ lookup('env', 'PP_TRACKER_TOKEN') }}"
 
 # The church calendar (../calendar) that rehearsals and performances are sent
 # to. calendar_url is its public address. calendar_internal_url is for
-# server-to-server calls; on the shared droplet the calendar listens on
-# http://127.0.0.1:8120, so use that there. calendar_token is a source token
+# server-to-server calls; empty means the public address, through the edge
+# box. calendar_token is a source token
 # (cal_...) for "productions" made in the calendar:
 #   export PP_CALENDAR_TOKEN=cal_...   # Keychain item production-planner-calendar
 calendar_url: ""
@@ -84,9 +107,9 @@ calendar_token: "{{ lookup('env', 'PP_CALENDAR_TOKEN') }}"
 # while SSO is on, `local-login on` on the droplet is the break-glass (README:
 # Single sign-on).
 sso_url: ""
-# User Management for server-to-server calls; it runs on port 8100 of the
-# shared droplet.
-sso_internal_url: "http://127.0.0.1:8100"
+# User Management for server-to-server calls. Empty means its public address,
+# through the edge box.
+sso_internal_url: ""
 sso_client_id: planner
 sso_client_secret: "{{ lookup('env', 'UM_PLANNER_SECRET') }}"
 # The planner's public https address, e.g. https://productions.example.org.
@@ -114,3 +137,17 @@ app_backup_dir: "{{ app_data_dir }}/backups"
 do_headers:
   Authorization: "Bearer {{ do_token }}"
   Content-Type: application/json
+# ssh options for every box this repo connects to as root. A new droplet has a
+# host key we've never seen; trust it the first time. With a deploy key, offer
+# only that one, not every key in the agent.
+root_ssh_args: >-
+  -o StrictHostKeyChecking=accept-new
+  {{- ' -o IdentitiesOnly=yes' if ssh_private_key_file else '' }}
+  {{- (' -o IdentityAgent=' ~ ssh_identity_agent) if ssh_identity_agent else '' }}
+
+# Host names a restore swaps in the database before the app starts, e.g. after
+# changing domain: [{ from: a.example.org, to: a.example.net }]. Exact names only.
+address_rewrites: []
+# Where this app saves addresses.
+rewrite_columns:
+  - { table: settings, column: value }

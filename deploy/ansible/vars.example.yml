@@ -1,30 +1,26 @@
 # Copy to vars.yml (gitignored) and fill in. Anything in defaults.yml can be
 # overridden here too.
 
-# Public address of the app. Caddy gets its HTTPS certificate for this name.
+# Public address of the app. The edge box's Caddy gets its HTTPS certificate for this name.
 app_domain: productions.example.org
 # The domain as added under Networking → Domains in DigitalOcean, with your
 # registrar's nameservers pointed at ns1/ns2/ns3.digitalocean.com. The
-# provision play creates the A record for app_domain in it.
+# provision play points the A record for app_domain at the edge box.
 dns_zone: example.org
-
-# Project to put the droplet in (Projects in the control panel sidebar).
-do_project: My Project
 
 # Datacenter, droplet size and OS. These are the defaults: New York 3,
 # $6/month, Ubuntu 26.04.
 do_region: nyc3
 do_size: s-1vcpu-1gb
 do_image: ubuntu-26-04-x64
-# Share the maintenance tracker's droplet (the default), or set both of
-# these to production-planner for a droplet of its own.
-droplet_name: maintenance-tracker
-# do_tag: maintenance-tracker
+# The apps box this app runs on (the default). Apps can share a box; change it
+# and run `make move FROM=<old box>` to move the app.
+apps_box: apps-1
+# The DigitalOcean team the token must belong to; empty skips the check.
+# do_team: My Team
 
-# Extra droplet tags, e.g. ones your own cloud firewalls target. If those
-# firewalls already allow SSH/HTTP/HTTPS, also turn off the play's own.
-# do_extra_tags: [website, ssh]
-# do_firewall: false
+# Extra droplet tags. ssh is the one the ssh firewall (edge_proxy) targets.
+do_extra_tags: [ssh]
 
 # A dedicated deploy key (see the README) instead of your default ssh setup.
 # ssh_private_key_file: ~/.ssh/planner_deploy
@@ -39,10 +35,8 @@ droplet_name: maintenance-tracker
 # tracker_url: https://maintenance.example.org
 
 # The church calendar (token from PP_CALENDAR_TOKEN, via with-pp). Leave blank
-# to manage it in the app on /admin/connections. On the shared droplet the
-# internal address is the calendar on localhost.
+# to manage it in the app on /admin/connections.
 # calendar_url: https://calendar.example.org
-# calendar_internal_url: http://127.0.0.1:8120
 
 # Single sign-on through User Management (secret from UM_PLANNER_SECRET in
 # the environment). Leave sso_url unset to manage SSO on /admin/connections
@@ -51,3 +45,7 @@ droplet_name: maintenance-tracker
 # is down: `local-login on` on the droplet (README: Single sign-on).
 # sso_url: https://accounts.example.org
 # base_url: https://productions.example.org   # sign-in returns to base_url/auth/callback
+
+# After changing domain, a restore swaps these in the database.
+# address_rewrites:
+#   - { from: app.example.org, to: app.example.net }

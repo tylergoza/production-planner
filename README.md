@@ -114,8 +114,7 @@ can't both have the Lifecenter without someone being told.
 1. On the calendar, an admin makes a **source** token for `productions` on
    its API tokens page (`cal_…`).
 2. In the planner, an admin opens **Connections**, fills in the calendar's
-   address (and on a shared droplet the internal address,
-   `http://127.0.0.1:8120`) and the token, and saves.
+   address (the internal address can stay empty) and the token, and saves.
 3. On the same page, **Send all dates to the calendar** sends every date
    from a year ago on. Pressing it again is safe.
 
@@ -176,9 +175,9 @@ Set with a flag or an environment variable. Flags go **before** any command.
 | `TRUST_PROXY=1` | `-trust-proxy` | off | Trust `X-Forwarded-For/Proto` from a reverse proxy. Only when a proxy is the only way in. |
 | `DEV=1` | `-dev` | off | Load templates/static from `./web` on disk |
 | `TRACKER_URL`, `TRACKER_TOKEN` | | | The maintenance tracker connection. When either is set, the whole connection comes from here and can't be changed on Connections. |
-| `CALENDAR_URL`, `CALENDAR_INTERNAL_URL`, `CALENDAR_TOKEN` | | | The church calendar connection: its public address, an optional server-to-server address (`http://127.0.0.1:8120` on the shared droplet), and a `cal_…` source token for `productions`. Same whole-connection rule. |
+| `CALENDAR_URL`, `CALENDAR_INTERNAL_URL`, `CALENDAR_TOKEN` | | | The church calendar connection: its public address, an optional server-to-server address (empty uses the public address), and a `cal_…` source token for `productions`. Same whole-connection rule. |
 | `SSO_URL` | | | User Management's public address (e.g. `https://accounts.example.org`). Set it to sign in there instead of with local passwords. With all the SSO variables (and `BASE_URL`) empty, single sign-on is whatever was saved on Connections. |
-| `SSO_INTERNAL_URL` | | `SSO_URL` | User Management for server-to-server calls, e.g. `http://127.0.0.1:8100` on the shared droplet |
+| `SSO_INTERNAL_URL` | | `SSO_URL` | User Management for server-to-server calls, e.g. an address only the servers can reach. Empty uses `SSO_URL` |
 | `SSO_CLIENT_ID`, `SSO_CLIENT_SECRET` | | | From registering this app in User Management (shown once). Required when `SSO_URL` is set; the app won't start without them. |
 | `BASE_URL` | | from the request | This app's public address, e.g. `https://plan.example.org`. The sign-in redirect URI is `BASE_URL/auth/callback` and must be registered exactly like that in User Management. Also the link the calendar gets back to each production. Part of the single sign-on connection: setting it alone puts that connection on the server (and so off). |
 
@@ -291,34 +290,43 @@ hand. Follow the comments at the top of `deploy/production-planner.service`.
 
 ### DigitalOcean with Ansible
 
-`deploy/ansible/` works like the maintenance tracker's, and by default puts
-the planner **on the tracker's droplet**: it finds it by the tracker's tag
-(`maintenance-tracker`) and adds itself alongside, on port 8090 with its own
-service user (`planner`), data folder and Caddy site. Provision adds the DNS
-record for the planner's domain (pointing at the same droplet) and the
-service user; with no tagged droplet it would create one. Deploy runs the
-tests, builds the Linux binary here, backs up the database when the binary
-changes (keeping 10 sets: the database and `secrets.key` together, as
-`pre-deploy-<time>.db` and `.key` in the backup folder), installs, and
-checks `/healthz`.
+`deploy/ansible/` works like the maintenance tracker's: the app runs on an
+apps box, behind a separate edge box that runs Caddy for every app
+([edge_proxy](../edge_proxy)). By default it shares the apps box `apps-1` with
+the other apps: it finds the box by tag and adds itself alongside, on port 8090
+(`app_port`) with its own service user (`planner`), data folder and unit.
+Nothing private is committed: the API token comes from the environment,
+droplets are found by tag on every run, and your domain and settings go in the
+gitignored `deploy/ansible/vars.yml`.
 
-Caddy's config is split so both apps can deploy without overwriting each
-other: `/etc/caddy/Caddyfile` only imports `/etc/caddy/sites/*.caddy`, and
-each app writes its own site there (`production-planner.caddy`,
-`maintenance-tracker.caddy`). Both repos write the same main Caddyfile. If
-the droplet still has the Caddyfile from an older tracker deploy, the
-planner's deploy stops and asks you to deploy the updated tracker first,
-rather than taking the tracker offline.
-
-For a droplet of its own instead, set `droplet_name` and `do_tag` to
-`production-planner` in `vars.yml`.
+You need Ansible, Go, a DigitalOcean API token with read/write scope, your
+domain added under **Networking → Domains** with the registrar's nameservers
+pointed at it, and the edge box provisioned first (edge_proxy's
+`make provision`, which also makes the firewalls).
 
 ```sh
 cp deploy/ansible/vars.example.yml deploy/ansible/vars.yml   # set app_domain, dns_zone
-export DIGITALOCEAN_TOKEN=...
-make provision                         # first time
-make deploy                            # every update after that
+with-do-church make provision          # first time
+with-do-church make deploy             # every update after that
 ```
+
+`with-do-church` runs a command with `DIGITALOCEAN_TOKEN` set for the church
+account. Set `do_team` in `vars.yml` to the account's team name and every play
+stops if the token belongs to another account.
+
+`make provision` creates the apps box named `apps_box` if no other app has
+(tagged `apps`, `apps-1` and `do_extra_tags`, which should include `ssh` for the
+ssh firewall), adds a swap file and monitoring alerts, points the app's DNS A
+record at the edge box (never at the apps box; a record already on an edge box
+is left alone, and `manage_dns: false` skips it), installs the service user and
+runs the deploy. Deploy runs the tests, builds the Linux binary here, backs up
+the database when the binary changes (keeping 10 sets: the database and
+`secrets.key` together, as `pre-deploy-<time>.db` and `.key` in the backup
+folder), installs, and checks `/healthz` on the box's VPC address. The unit
+listens there (a drop-in sets `ADDR`), not on a public port. A second play
+writes the app's Caddy site, `/etc/caddy/sites/production-planner.caddy`, on
+every edge box, then validates the whole config and reloads Caddy. The deploy
+stops before building if there's no edge box.
 
 On the first deploy the admin user is created before the app starts, so
 `/setup` is never exposed. Set `PP_ADMIN_PASSWORD` to choose its password, or
@@ -330,12 +338,12 @@ To set one in `vars.yml` instead, fill in its address and let `with-pp` pass
 the token from the Keychain: `tracker_url` with `PP_TRACKER_TOKEN` (the
 tracker's "Production planner" API token), or `calendar_url` with
 `PP_CALENDAR_TOKEN` (the calendar's source token for `productions`, Keychain
-item `production-planner-calendar`). On the shared droplet set
-`calendar_internal_url` to `http://127.0.0.1:8120`.
+item `production-planner-calendar`). Leave `calendar_internal_url` empty: the
+public address goes through the edge box.
 
 First deploy with connections in `vars.yml`:
 
-1. `with-do with-pp make deploy`.
+1. `with-do-church with-pp make deploy`.
 2. Sign in, open **/admin/connections**, and press **Keep in settings** for each connection set in `vars.yml`. The app saves it (tokens are encrypted with `secrets.key`).
 3. Blank those values in `vars.yml` and redeploy. The app keeps its saved settings.
 4. With the calendar set, press **Send all dates to the calendar** on `/admin/connections` once.
@@ -350,16 +358,15 @@ This is the server-side way; you can instead leave `sso_url` blank and set
 SSO up on `/admin/connections` (see Single sign-on above), or set it here
 first and hand it over with **Keep in settings** like the other
 connections. To set it here: once User
-Management is deployed on the same droplet and its import-users playbook has
+Management is deployed and its import-users playbook has
 printed the planner's client secret:
 
 ```sh
 # in deploy/ansible/vars.yml:
 #   sso_url: https://accounts.example.org
 #   base_url: https://productions.example.org   # sign-in returns to base_url/auth/callback
-export DIGITALOCEAN_TOKEN=...
 export UM_PLANNER_SECRET=...           # from User Management's import-users playbook
-make deploy
+with-do-church make deploy
 ```
 
 The deploy stops before building if `sso_url` is set without the secret or
@@ -374,12 +381,54 @@ README (`ssh_private_key_file` in `vars.yml`; the same key works for both).
 
 ### Moving between hosts
 
-**Settings → Download backup** (or the `backup` command), stop the app on the
-new host, copy the file to its database path
-(`/var/lib/production-planner/productions.db`, owned by `planner`) with
-`secrets.key` from the old host beside it, and start it. Without the key the
-app starts fine, but saved tokens have to be entered again on Connections.
-Droplet backups cover both apps when they share a droplet.
+Backup and restore are separate steps that go through this machine, so they
+work between DigitalOcean accounts and need no network path between the boxes.
+Backups land in `~/Backups/mountainview/production-planner/<UTC time>/`
+(`local_backup_dir`; folders 0700, files 0600, outside every repo), holding
+`productions.db`, `secrets.key` and a `manifest.yml` with the source, time,
+binary checksum and each file's sha256. The database and `secrets.key` are all
+the app stores; there are no uploads or other files to carry.
+
+```sh
+# Copy from a box. FROM is an IP (needs only SSH, no token) or a droplet name
+# (looked up in the token's account). The app keeps running.
+make backup FROM=203.0.113.10
+# The final copy: stops the app first and leaves it stopped and disabled.
+make backup FROM=203.0.113.10 STOP=true
+
+# Put a backup on the apps box. Provision first, without starting the app.
+with-do-church make provision RESTORE_PENDING=true
+with-do-church make restore BACKUP=latest      # or BACKUP=<dir>
+```
+
+`RESTORE_PENDING=true` installs the binary and unit but doesn't start the
+app or create an admin, because restore refuses to replace a database and the
+app would make an empty one on first start. Restore checks the manifest's
+checksums, installs the files owned by `planner` at mode 0600, removes stale
+`-wal`/`-shm` files, starts the app and waits for `/healthz`. If the box
+already has a database it refuses, unless `FORCE=true`, which first saves
+`pre-restore-<time>.db` (and `.key`) in the box's backups folder.
+
+To move to another apps box in the same account, set `apps_box` in `vars.yml`
+to the new box and run `with-do-church make move FROM=apps-1`. It backs up the
+old box and stops the app there, provisions the new one with
+`RESTORE_PENDING=true`, restores, and rewrites the edge site file for the new
+address. DNS isn't touched. `move` refuses when `FROM` is the current
+`apps_box`; pass `FORCE=true` to replace a database already on the new box. The
+old box keeps its data folder as a fallback, and moving back is the same
+command the other way.
+
+By hand, without Ansible: take the snapshot with **Settings → Download
+backup** or the `backup` command, copy `secrets.key` from beside the database
+too (without it the app starts fine, but saved tokens have to be entered again
+on Connections), stop the app on the new host, and put both in
+`/var/lib/production-planner/`, mode 0600, owned by `planner`.
+Droplet backups cover every app on the box.
+
+**Changing domain.** List the old and new host names as `address_rewrites` in
+`vars.yml`, and each `make restore` swaps them in the database before the app
+starts. It's all or nothing: a failure leaves the database as it was and stops the
+restore. Names not listed are left alone.
 
 ## Layout
 
@@ -392,7 +441,7 @@ internal/secrets/           encrypts saved tokens (secrets.key)
 internal/server/            routes, middleware, handlers, PWA endpoints
 web/templates/              layout, partials, pages, sw.js
 web/static/                 css, js (application, autoloader, controllers, vendor), icons
-deploy/                     systemd unit, Caddyfile, ansible/ (DigitalOcean provision + deploy)
+deploy/                     systemd unit, Caddyfile, ansible/ (DigitalOcean provision, deploy, backup, restore, move)
 ```
 
 ## Tests

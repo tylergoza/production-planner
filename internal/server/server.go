@@ -28,6 +28,7 @@ import (
 	"github.com/tylergoza/production-planner/internal/sso"
 	"github.com/tylergoza/production-planner/internal/store"
 	"github.com/tylergoza/production-planner/internal/tracker"
+	"github.com/tylergoza/production-planner/internal/umtoken"
 	"github.com/tylergoza/production-planner/web"
 )
 
@@ -74,6 +75,8 @@ type Server struct {
 	ssoBroken  atomic.Value
 	ssoBaseURL atomic.Value
 	grants     *grantChecks
+	// meTokens checks the User Management tokens sent to /api/v1/me/….
+	meTokens *umtoken.Verifier
 
 	limiter *loginLimiter
 	live    *hub
@@ -85,7 +88,7 @@ func New(cfg Config, st *store.Store, logger *slog.Logger) (*Server, error) {
 		cfg.SessionTTL = 30 * 24 * time.Hour
 	}
 	s := &Server{cfg: cfg, store: st, log: logger, limiter: newLoginLimiter(10, 15*time.Minute), live: newHub(), grants: newGrantChecks(),
-		calendarKick: make(chan struct{}, 1)}
+		calendarKick: make(chan struct{}, 1), meTokens: umtoken.New()}
 	s.ssoBroken.Store("")
 	s.ssoBaseURL.Store("")
 	if err := s.reloadSSO(); err != nil {
